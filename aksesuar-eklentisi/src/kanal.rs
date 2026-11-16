@@ -35,6 +35,9 @@ pub struct Oge {
     /// The occurrence holding the body, as joint origins take it: an id, a component name, or 0
     /// for the design's own bodies.
     pub yerlesim: Value,
+    /// The occurrence path from the top of the assembly down to that body (empty for the design's
+    /// own bodies or when the selection does not say).
+    pub yol: Vec<u64>,
 }
 
 /// The straight edge of the sash.
@@ -60,6 +63,7 @@ fn oge(item: &Value) -> Option<Oge> {
     let govde = item.get("body")?.as_str()?.to_string();
     let indeks = item.get("index")?.as_u64()?;
     let nokta = v3(item.get("point"));
+    let yol = item.get("occurrence_path").and_then(Value::as_array).map(|p| p.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
     let yerlesim = match item.get("occurrence_path").and_then(Value::as_array).and_then(|p| p.last()).and_then(Value::as_u64) {
         Some(id) => json!(id),
         None => match item.get("component") {
@@ -69,7 +73,20 @@ fn oge(item: &Value) -> Option<Oge> {
             _ => json!(0),
         },
     };
-    Some(Oge { govde, indeks, nokta, yerlesim })
+    Some(Oge { govde, indeks, nokta, yerlesim, yol })
+}
+
+/// The occurrence that moves: the outermost one holding the part that does not also hold the
+/// sash. A part brought in from a STEP file is a component of one sub-component per body, held
+/// together by rigid joints; moving only the picked body's sub-component would leave the others
+/// behind. Also says whether the part's body lies deeper than that occurrence (then the joint
+/// takes the seat as an explicit frame, as a face origin finds only the occurrence's own bodies).
+pub fn tasinacak(kanat: &Oge, parca: &Oge) -> (Value, bool) {
+    let ortak = kanat.yol.iter().zip(&parca.yol).take_while(|(a, b)| a == b).count();
+    match parca.yol.get(ortak) {
+        Some(id) => (json!(id), parca.yol.len() > ortak + 1),
+        None => (parca.yerlesim.clone(), false),
+    }
 }
 
 /// Sorts the selection into seat face, sash edge and optional floor face.
@@ -165,9 +182,11 @@ pub fn tabani_bul(reply: &Value, k: &Kenar) -> Result<Yuz, Hata> {
         .ok_or_else(|| Hata::girdi("seçim", "Kenarın yanında düz bir taban yüzü bulunamadı. Kanal tabanı yüzünü de seçin."))
 }
 
-/// The part's long direction in its seat face: its longest straight edge square to the seat
-/// normal, pointing along the positive world axis it is closest to.
-pub fn uzun_eksen(reply: &Value, normal: V3) -> Result<V3, Hata> {
+/// The part's long direction in its seat face: its longest straight edge lying in the seat
+/// face's plane, pointing along the positive world axis it is closest to. Edges elsewhere on the
+/// part are left out: a long slanted edge on another face would turn the part off the groove.
+pub fn uzun_eksen(reply: &Value, oturma: &Yuz) -> Result<V3, Hata> {
+    let normal = oturma.normal;
     let edges = reply.get("edges").and_then(Value::as_array).ok_or_else(|| Hata::komut("model.edges", "Kenarlar okunamadı."))?;
     let mut best: Option<(f64, V3)> = None;
     for e in edges {
@@ -176,8 +195,9 @@ pub fn uzun_eksen(reply: &Value, normal: V3) -> Result<V3, Hata> {
         let l = chord.boy();
         let length = e.get("length").and_then(Value::as_f64).unwrap_or(l);
         let Some(dir) = chord.birim() else { continue };
-        // Straight (its length is its chord) and lying square to the seat normal.
-        if (length - l).abs() > 1e-4 * l.max(1.0) || dir.nokta(normal).abs() > 1e-4 {
+        // Straight (its length is its chord) and lying in the seat's plane.
+        let tol = (l * 1e-6).max(1e-3);
+        if (length - l).abs() > 1e-4 * l.max(1.0) || dir.nokta(normal).abs() > 1e-4 || !duzlemde(oturma, a, tol) || !duzlemde(oturma, b, tol) {
             continue;
         }
         if best.is_none_or(|(bl, _)| l > bl + 1e-9) {
@@ -200,6 +220,9 @@ pub struct Plan {
     pub taban_noktasi: V3,
     /// A point on the seat face (picks it).
     pub oturma_noktasi: V3,
+    /// The seat face's centre and outward normal (the part's frame when it is a nested body).
+    pub oturma_merkezi: V3,
+    pub oturma_normali: V3,
     /// The part's long direction (b's x).
     pub parca_ekseni: V3,
     /// Whether the floor frame's x runs along the edge (else its y does).
@@ -238,6 +261,8 @@ pub fn planla(k: &Kenar, taban: &Yuz, oturma: &Yuz, parca_ekseni: V3, sondan: bo
         kenar_ortasi: k.bas.arti(k.son).kat(0.5),
         taban_noktasi: taban.nokta,
         oturma_noktasi: oturma.nokta,
+        oturma_merkezi: oturma.merkez,
+        oturma_normali: oturma.normal,
         parca_ekseni,
         x_kenar_boyunca,
         yanal: (yanal * 1e6).round() / 1e6,
@@ -246,19 +271,25 @@ pub fn planla(k: &Kenar, taban: &Yuz, oturma: &Yuz, parca_ekseni: V3, sondan: bo
 }
 
 impl Plan {
-    /// `joint.create`'s parameters.
-    pub fn eklem(&self, a: &Value, b: &Value, ad: &str, mesafe: &Mesafe) -> Value {
+    /// `joint.create`'s parameters. `ic_ice`: the seat body lies inside a sub-component of `b`,
+    /// so the part's side is an explicit frame at the seat's centre rather than a face origin.
+    pub fn eklem(&self, a: &Value, b: &Value, ad: &str, mesafe: &Mesafe, ic_ice: bool) -> Value {
         let m = mesafe.json();
         let (values, limits) = if self.x_kenar_boyunca {
             (json!([m, self.yanal, self.aci]), json!([null, [self.yanal, self.yanal], [self.aci, self.aci]]))
         } else {
             (json!([self.yanal, m, self.aci]), json!([[self.yanal, self.yanal], null, [self.aci, self.aci]]))
         };
+        let parca = if ic_ice {
+            json!({"occurrence": b, "frame": {"origin": self.oturma_merkezi.json(), "z": self.oturma_normali.json(), "x": self.parca_ekseni.json()}})
+        } else {
+            json!({"occurrence": b, "face": self.oturma_noktasi.json(), "x": self.parca_ekseni.json()})
+        };
         json!({
             "type": "planar",
             "name": ad,
             "a": {"occurrence": a, "edge": self.kenar_ortasi.json(), "corner": self.kose.json(), "on": self.taban_noktasi.json()},
-            "b": {"occurrence": b, "face": self.oturma_noktasi.json(), "x": self.parca_ekseni.json()},
+            "b": parca,
             "flip": false,
             "offset": 0,
             "angle": 0,
@@ -274,6 +305,21 @@ fn yeni_yerlesim(liste: &Value, bilesen: u64) -> Option<Value> {
     let c = liste.get("components")?.as_array()?.iter().find(|c| c.get("id").and_then(Value::as_u64) == Some(bilesen))?;
     let o = c.get("occurrences")?.as_array()?.first()?;
     o.get("id").and_then(Value::as_u64).map(|id| json!(id))
+}
+
+/// Whether occurrence `id` is grounded, from `component.list`.
+fn sabit_mi(liste: &Value, id: u64) -> bool {
+    liste
+        .get("components")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c.get("occurrences").and_then(Value::as_array))
+        .flatten()
+        .find(|o| o.get("id").and_then(Value::as_u64) == Some(id))
+        .and_then(|o| o.get("grounded"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 pub fn calistir(ana: &mut dyn Ana, p: &Value) -> Result<Value, Hata> {
@@ -305,14 +351,14 @@ pub fn calistir(ana: &mut dyn Ana, p: &Value) -> Result<Value, Hata> {
         taban.nokta = n;
     }
     let kenarlar = ana.komut("model.edges", &json!({"body": secim.oturma.govde}))?;
-    let eksen = uzun_eksen(&kenarlar, oturma.normal)?;
+    let eksen = uzun_eksen(&kenarlar, &oturma)?;
     let plan = planla(&secim.kenar, &taban, &oturma, eksen, sondan, cevir)?;
 
     // The part needs a component of its own to move; a body of the design itself gets one.
     let a = secim.kenar.oge.yerlesim.clone();
-    let mut b = secim.oturma.yerlesim.clone();
+    let (mut b, ic_ice) = tasinacak(&secim.kenar.oge, &secim.oturma);
     let mut bilesen_yapildi = false;
-    if b == json!(0) {
+    let liste = if b == json!(0) {
         let made = ana.komut("component.from_bodies", &json!({"bodies": [secim.oturma.govde]}))?;
         let id = made
             .pointer("/components/0/component")
@@ -321,15 +367,26 @@ pub fn calistir(ana: &mut dyn Ana, p: &Value) -> Result<Value, Hata> {
         let liste = ana.komut("component.list", &json!({"compact": true}))?;
         b = yeni_yerlesim(&liste, id).ok_or_else(|| Hata::komut("component.list", "Yeni bileşenin yerleşimi bulunamadı."))?;
         bilesen_yapildi = true;
-    }
+        liste
+    } else {
+        ana.komut("component.list", &json!({"compact": true}))?
+    };
     if a == b {
         return Err(Hata::girdi(
             "seçim",
             "Aksesuar ve kanat aynı bileşende. Aksesuarı ayrı bir bileşen yapın (Gövdelerden Bileşen Oluştur) ve yeniden deneyin.",
         ));
     }
+    // A grounded part (a STEP insert is grounded) would not move: the joint places it.
+    let mut sabitleme_kalkti = false;
+    if let Some(id) = b.as_u64()
+        && sabit_mi(&liste, id)
+    {
+        ana.komut("occurrence.ground", &json!({"occurrence": id, "grounded": false}))?;
+        sabitleme_kalkti = true;
+    }
     let ad = format!("Kanal: {}", kisalt(&secim.oturma.govde, 60));
-    let reply = ana.komut("joint.create", &plan.eklem(&a, &b, &ad, &mesafe))?;
+    let reply = ana.komut("joint.create", &plan.eklem(&a, &b, &ad, &mesafe, ic_ice))?;
     let olcu = match &mesafe {
         Mesafe::Sayi(n) => format!("{} mm", crate::json::sayi(*n)),
         Mesafe::Ifade(s) => s.clone(),
@@ -342,6 +399,12 @@ pub fn calistir(ana: &mut dyn Ana, p: &Value) -> Result<Value, Hata> {
     mesaj.push('.');
     if bilesen_yapildi {
         mesaj.push_str(" Aksesuar gövdesi kendi bileşenine alındı.");
+    }
+    if ic_ice {
+        mesaj.push_str(" Parçanın tüm gövdeleri birlikte taşındı.");
+    }
+    if sabitleme_kalkti {
+        mesaj.push_str(" Parçanın sabitlemesi kaldırıldı.");
     }
     ana.gunluk(&mesaj);
     Ok(json!({

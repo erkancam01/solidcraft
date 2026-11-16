@@ -8,7 +8,7 @@ nerede olduğu, nasıl kullanıldığı ve nereden indirileceği.
 | 1 | Türkçe arayüz (SolidWorks terimleriyle) | Çeviri | `turkce` | Hazır |
 | 2 | İfadelerde `if()`, karşılaştırmalar, `and`/`or`/`not` (A1) | Motor | `a1-ifade` | Hazır |
 | 3 | Çoğaltma adetlerinin parametreyle sürülmesi (A3) | Motor | `a3-cogaltma` | Geliştiriliyor |
-| 4 | Aksesuar eklentisi (4 komut) | Eklenti | `aksesuar-eklentisi` | 0.1.1 uygulamada denendi (Kanala Yerleştir hariç) |
+| 4 | Aksesuar eklentisi (4 komut) | Eklenti | `aksesuar-eklentisi` | 0.1.2; dört komut da uygulamada denendi |
 | 5 | Koşullu bastırma: konfigürasyon kuralları | SolidCraft'ta yerleşik | — | Hazır |
 
 Eski A2 (bastırma) ve A4 (kanal) dalları bırakıldı; işleri eklentiye ve yerleşik kurallara taşındı.
@@ -77,6 +77,18 @@ gelir; yan kayma ve dönüş sınırlarla kilitlidir. Mesafe ifadesi ilişkide s
 değişince parça kendiliğinden kayar. Kenar ve köşe adla izlenir; kanat boyu değişse de parça
 köşeye göre aynı mesafede kalır. Aksesuar tasarımın kendi gövdesiyse önce kendi bileşenine
 alınır (Gövdelerden Bileşen Oluştur).
+
+**STEP parçaları** (0.1.2): **Ekle > STEP** ile eklenen parça, gövde başına bir alt bileşenden
+oluşan bir bileşen olarak gelir ve sabitlenmiş (grounded) durur. Kanala Yerleştir parçanın **tüm
+gövdelerini birlikte** taşır (en dıştaki bileşeni) ve sabitlemesini kendisi kaldırır; pencerede
+bunu söyler. Oturma yüzü parçanın herhangi bir gövdesinden seçilebilir.
+
+**Mesafe oturma yüzünün ortasına** kadardır. Köşe aktarma gibi köşeye dayanan parçalarda köşeden
+yüz ortasına olan payı ekleyin. Örnek: YMB.00146 tırnaklı köşe aktarmada dikey kolun iç yüzü
+oturma yüzüdür ve pay **30,9 mm**'dir (**Kenarın sonundan ölç** + **180° çevir**, mesafe `30,9`).
+
+Parçanın yönü oturma yüzünün **kendi düzlemindeki** en uzun düz kenardan alınır (0.1.1'de
+gövdenin başka yüzlerindeki kenarlar da sayılıyordu; karmaşık parçalarda eğik oturabiliyordu).
 
 ### 4.2 Tij ve Malzeme Listesi
 
@@ -204,6 +216,21 @@ Türkçe SolidCraft 0.43 üzerinde, FFH 1500 / FFB 900 / KOL 600:
 - FFH 1100'e düşürülünce kurallar geri döndü: ek kilit ve iki parça bastırıldı, `TIJ sol alt`
   (328 mm) geldi; CSV 4 tij, toplam 1542 mm.
 
+### 0.1.2 Kanala Yerleştir deneme sonucu (16.11.2026)
+
+Parça: `YMB.00146 - TIRNAKLI KÖŞE AKTARMA.STEP` (SolidWorks 2022, 4 gövde, L biçimli: dikey kol
+~150 mm, yatay kol ~88 mm). Şablonun (FFH 1500, FFB 900) sağ üst köşesine yerleştirildi: oturma
+yüzü dikey kolun iç yüzü, kenar Kanat sağ'ın dış dikey kenarı, sondan ölç, 180° çevir, mesafe 30,9.
+
+- 0.1.1'de bulunan hata: yalnızca seçilen gövde taşındı, diğer 3 gövde yerinde kaldı. 0.1.2'de
+  düzeltildi.
+- 0.1.2 sonucu: dört gövde birlikte taşındı; dikey kol sağ profilin dış yüzünde (x = 900),
+  yatay kolun alt yüzü tam üst profilin dış yüzünde (z = 1500). Tırnak, kanala ~3,8 mm iniyor
+  (şablon profili düz kutu olduğu için içine giriyor; gerçek profilde kanala oturur).
+- FFH 1300 / FFB 1000 yapılınca parça yeni köşeye kaydı (z = 1300, x = 1000).
+- Şablonun kendi KA-02 kutuları aynı yerde durur; gerçek parça kullanırken onları silin ya da
+  gizleyin.
+
 ## 8. İndirme yerleri
 
 GitHub: `erkancam01/solidcraft` > **Actions**.
@@ -218,8 +245,12 @@ GitHub: `erkancam01/solidcraft` > **Actions**.
 
 ## 9. Bilinen sınırlar
 
-- Kanala Yerleştir gerçek bir STEP parçasıyla henüz denenmedi. İlk kullanımda sonucu gözle
-  kontrol edin; parça ters ya da yanlış eksende durursa **180° çevir**'i deneyin ve bildirin.
+- Kanala Yerleştir'de mesafe oturma yüzünün ortasına göredir; köşe parçalarında payı elle
+  eklemek gerekir (bkz. 4.1). Parça ters durursa **180° çevir**'i deneyin.
+- Kontrol kanalından, aynı uygulama oturumunda eklenti çalıştırıldıktan sonra yapılan ikinci
+  `plugin.install` bir kez takıldı (dosyalar yazıldı, izin kaydı güncellenmedi). Uygulamayı
+  yeniden başlatıp kurulumu tekrarlamak çözdü. Pencereden (Eklenti yükle…) kurulumda bu durum
+denenmedi.
 - Kanala Yerleştir, kanal tabanının köşesinde iki kenarın dik kesiştiğini (dikdörtgen taban)
   varsayar. Yan konum (kanal ortası) yerleştirme anındaki taban genişliğinden alınır.
 - Tij listesi bileşen yerleşimlerini ayrı saymaz: her gövde bir kez sayılır (bileşen listesi

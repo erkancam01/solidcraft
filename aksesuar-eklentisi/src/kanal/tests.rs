@@ -69,7 +69,10 @@ fn design(items: Vec<Value>) -> TestAna {
             ("component.from_bodies", _) => json!({"components": [{"component": 7, "body": "Makas", "feature": 30}]}),
             ("component.list", _) => json!({"active": 0, "pending_moves": [], "components": [
                 {"id": 0, "name": "Pencere", "occurrences": []},
-                {"id": 7, "name": "Makas", "occurrences": [{"id": 12, "name": "Makas:1", "parent": 0, "grounded": false}]}]}),
+                {"id": 7, "name": "Makas", "occurrences": [{"id": 12, "name": "Makas:1", "parent": 0, "grounded": false}]},
+                {"id": 26, "name": "KA STEP", "occurrences": [{"id": 27, "name": "KA STEP:1", "parent": 0, "grounded": true}]},
+                {"id": 30, "name": "KA govde", "occurrences": [{"id": 31, "name": "KA govde:1", "parent": 26, "grounded": false}]}]}),
+            ("occurrence.ground", _) => json!({"occurrence": p["occurrence"], "grounded": false}),
             ("joint.create", _) => json!({"joint": 40, "name": p["name"], "warnings": []}),
             other => panic!("unexpected {other:?} {p}"),
         })
@@ -140,7 +143,7 @@ fn without_a_floor_the_larger_face_beside_the_edge_is_used() {
 #[test]
 fn the_floor_frame_case_matches_the_engines_corner_rule() {
     // joints_edge.rs: x = de when z · (de × df) >= 0, else df; df runs into the face.
-    let k = |a: V3, b: V3| Kenar { oge: Oge { govde: "K".into(), indeks: 0, nokta: None, yerlesim: json!(0) }, bas: a, son: b };
+    let k = |a: V3, b: V3| Kenar { oge: Oge { govde: "K".into(), indeks: 0, nokta: None, yerlesim: json!(0), yol: vec![] }, bas: a, son: b };
     let floor = Yuz { normal: V3::new(0.0, 0.0, 1.0), merkez: V3::new(0.0, 0.0, 0.0), nokta: V3::new(0.0, 0.0, 0.0), alan: 1.0 };
     let seat = Yuz { normal: V3::new(0.0, 0.0, -1.0), merkez: V3::new(0.0, 0.0, 5.0), nokta: V3::new(0.0, 0.0, 5.0), alan: 1.0 };
     // A 20 x 10 floor centred on the origin; each of its four edges, from each end.
@@ -210,14 +213,60 @@ fn distances_are_checked_against_the_designs_parameters() {
     assert!(matches!(calistir(&mut design(vec![]), &json!({"mesafe": "5", "cevir": "evet"})), Err(Hata::Girdi { .. })));
 }
 
+fn seat(normal: V3, merkez: V3) -> Yuz {
+    Yuz { normal, merkez, nokta: merkez, alan: 1.0 }
+}
+
 #[test]
 fn the_part_axis_is_its_longest_straight_edge_in_the_seat() {
-    assert_eq!(uzun_eksen(&makas_edges(), V3::new(0.0, 0.0, -1.0)).unwrap(), V3::new(0.0, 1.0, 0.0));
-    // Seated on a side face, the 200 mm edge runs along the normal: the 22 mm edge along z wins
-    // over the 15 mm one, and the 400 mm arc is not straight.
-    assert_eq!(uzun_eksen(&makas_edges(), V3::new(0.0, 1.0, 0.0)).unwrap(), V3::new(0.0, 0.0, 1.0));
-    assert!(uzun_eksen(&json!({"edges": []}), V3::new(0.0, 0.0, 1.0)).is_err());
-    assert!(uzun_eksen(&json!({}), V3::new(0.0, 0.0, 1.0)).is_err());
+    let alt = seat(V3::new(0.0, 0.0, -1.0), V3::new(500.0, 500.0, 100.0));
+    assert_eq!(uzun_eksen(&makas_edges(), &alt).unwrap(), V3::new(0.0, 1.0, 0.0));
+    // Seated on the side face y = 400, the 200 mm edge runs along the normal: the 22 mm edge
+    // along z wins over the 15 mm one, and the 400 mm arc is not straight.
+    let yan = seat(V3::new(0.0, 1.0, 0.0), V3::new(500.0, 400.0, 110.0));
+    assert_eq!(uzun_eksen(&makas_edges(), &yan).unwrap(), V3::new(0.0, 0.0, 1.0));
+    assert!(uzun_eksen(&json!({"edges": []}), &alt).is_err());
+    assert!(uzun_eksen(&json!({}), &alt).is_err());
+}
+
+#[test]
+fn a_long_edge_off_the_seat_does_not_turn_the_part() {
+    // A 300 mm slanted edge square to the seat normal but on another face (z = 122, the top)
+    // used to win over the seat's own 200 mm edge and turn the part off the groove.
+    let mut edges = makas_edges();
+    edges["edges"].as_array_mut().unwrap().push(json!({"index": 9, "length": 300.0, "start": [400, 400, 122], "end": [612.1, 612.1, 122]}));
+    let alt = seat(V3::new(0.0, 0.0, -1.0), V3::new(500.0, 500.0, 100.0));
+    assert_eq!(uzun_eksen(&edges, &alt).unwrap(), V3::new(0.0, 1.0, 0.0));
+}
+
+#[test]
+fn a_step_part_moves_whole_and_is_ungrounded() {
+    // A STEP insert: occurrence 27 (grounded) holds one sub-component per body; the picked seat
+    // is on the body of sub-occurrence 31.
+    let mut ana =
+        design(vec![seat_item(json!({"occurrence_path": [27, 31], "component": {"id": 30, "name": "KA govde"}})), edge_item(), floor_item()]);
+    let out = calistir(&mut ana, &json!({"mesafe": "30,9", "sondan": true, "cevir": true})).unwrap();
+    assert_eq!(ana.adlar(), ["selection.get", "model.faces", "model.faces", "model.edges", "component.list", "occurrence.ground", "joint.create"]);
+    crate::tests::commands_are_granted("kanala-yerlestir", &ana.adlar());
+    assert_eq!(ana.komutlar[5].1, json!({"occurrence": 27, "grounded": false}));
+    let j = joint(&ana);
+    assert_eq!(j["b"], json!({"occurrence": 27, "frame": {"origin": [500.0, 500.0, 100.0], "z": [0.0, 0.0, -1.0], "x": [0.0, 1.0, 0.0]}}));
+    assert_eq!(j["values"], json!([30.9, 31.0, 180.0]));
+    let mesaj = out["mesaj"].as_str().unwrap();
+    assert!(mesaj.contains("tüm gövdeleri birlikte") && mesaj.contains("sabitlemesi kaldırıldı"), "{mesaj}");
+}
+
+#[test]
+fn the_moving_occurrence_is_the_outermost_one_apart_from_the_sash() {
+    let oge = |yol: Vec<u64>| Oge { govde: "G".into(), indeks: 0, nokta: None, yerlesim: json!(yol.last().copied().unwrap_or(0)), yol };
+    // Sash in the root, part nested two deep: the outer occurrence, through a frame.
+    assert_eq!(tasinacak(&oge(vec![]), &oge(vec![27, 31])), (json!(27), true));
+    // Both inside assembly 5: the part's occurrence below it.
+    assert_eq!(tasinacak(&oge(vec![5, 7]), &oge(vec![5, 9])), (json!(9), false));
+    assert_eq!(tasinacak(&oge(vec![5, 7]), &oge(vec![5, 9, 11])), (json!(9), true));
+    // A body of the design itself, or a selection without paths: as before.
+    assert_eq!(tasinacak(&oge(vec![]), &oge(vec![])), (json!(0), false));
+    assert_eq!(tasinacak(&oge(vec![3]), &oge(vec![3])), (json!(3), false));
 }
 
 #[test]
@@ -230,7 +279,7 @@ fn hostile_replies_fail_without_panicking() {
         tabani_bul(
             &json!({"faces": 3}),
             &Kenar {
-                oge: Oge { govde: "K".into(), indeks: 0, nokta: None, yerlesim: json!(0) },
+                oge: Oge { govde: "K".into(), indeks: 0, nokta: None, yerlesim: json!(0), yol: vec![] },
                 bas: V3::new(0.0, 0.0, 0.0),
                 son: V3::new(1.0, 0.0, 0.0)
             }

@@ -13,6 +13,8 @@ pub const SATIRLAR: &[&str] = &[
     "   'Kenarın sonundan ölç' mesafeyi kenarın öbür ucundan ölçer; '180° çevir' parçayı ters çevirir.",
     "   Sonuç: bir Düzlemsel ilişki (Kanal: <gövde>). Parametre değişince parça kendiliğinden kayar.",
     "   Aksesuar tasarımın kendi gövdesiyse önce kendi bileşenine alınır.",
+    "   STEP ile eklenen parça (Ekle > STEP) tüm gövdeleriyle birlikte taşınır; sabitlemesi kaldırılır.",
+    "   Mesafe oturma yüzünün ortasına kadardır: köşe aktarmada köşeden yüz ortasına olan payı ekleyin.",
     "",
     "2) Tij ve Malzeme Listesi",
     "   Ne yapar: Adı TIJ ile başlayan her gövdenin kesim boyunu (en uzun kenar, 0,5 mm'ye yuvarlı) ve",
