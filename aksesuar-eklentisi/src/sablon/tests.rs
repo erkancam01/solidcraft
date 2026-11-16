@@ -32,43 +32,117 @@ fn reference() -> Vec<Value> {
 }
 
 #[test]
-fn the_template_sends_the_reference_design_unchanged_then_its_locks_and_rules() {
+fn the_template_sends_the_reference_design_upright_then_its_locks_bars_and_rules() {
     let mut ana = bos_tasarim(&[]);
     let out = calistir(&mut ana, &json!({"FFH": 1200, "FFB": 900, "KOL": 600})).unwrap();
     let sent = ana.json();
     let reference = reference();
     assert_eq!(reference.len(), 53);
     assert_eq!(sent[0]["command"], "parameters.list");
-    assert_eq!(&sent[1..=53], reference.as_slice(), "the ported geometry is the hand-built design's, command for command");
+    let upright: Vec<Value> = reference.iter().map(dik_komut).collect();
+    assert_eq!(&sent[1..=53], upright.as_slice(), "the hand-built design's commands, in order, each box stood upright");
     let rest: Vec<&str> = ana.adlar()[54..].to_vec();
     assert_eq!(
         rest,
-        ["solid.box", "appearance.assign", "solid.box", "appearance.assign", "parameters.add", "config.configure", "config.rule", "config.activate"]
+        [
+            "parameters.add",
+            "parameters.add",
+            "parameters.add",
+            "solid.box",
+            "appearance.assign",
+            "solid.box",
+            "appearance.assign",
+            "solid.box",
+            "appearance.assign",
+            "solid.box",
+            "appearance.assign",
+            "parameters.add",
+            "config.configure",
+            "config.rule",
+            "config.activate"
+        ]
     );
     altin("cift_acilim_komutlar.json", &json!(sent));
-    // Box ids in reply order: the reference's 20 boxes are 100..=119, the locks 120 and 121.
+    // Box ids in reply order: the reference's 20 boxes are 100..=119 ("TIJ sol alt" is the 17th,
+    // 116), then the extra lock 120, the split bars 121 and 122, the child lock 123.
+    let f = Anahtarlar { ek_kilit: 120, cocuk_kilidi: 123, tij_sol_alt: 116, tij_sol_alt_1: 121, tij_sol_alt_2: 122 };
     assert_eq!(out["ek_kilit"], 120);
-    assert_eq!(out["cocuk_kilidi"], 121);
+    assert_eq!(out["cocuk_kilidi"], 123);
+    assert_eq!(out["tij_sol_alt"], 116);
+    let configure = &ana.komutlar[ana.komutlar.len() - 3].1;
+    assert_eq!(configure["features"], json!(ANAHTARLI));
     let rule = &ana.komutlar[ana.komutlar.len() - 2].1;
-    assert_eq!(rule, &kurallar(120, 121));
+    assert_eq!(rule, &kurallar(&f));
     assert_eq!(ana.komutlar.last().unwrap().1, json!({"row": "Default"}));
     crate::tests::commands_are_granted("cift-acilim-sablonu", &ana.adlar());
 }
 
 #[test]
-fn the_rules_switch_each_lock_both_ways() {
-    let r = kurallar(7, 9);
+fn boxes_stand_upright_with_the_room_side_at_minus_y() {
+    let (size, center) = dik(["15 mm", "IS", "22 mm"], ["-7.5 mm", "KOL", "-35 mm"]);
+    assert_eq!(size, ["15 mm", "22 mm", "IS"]);
+    assert_eq!(center, ["-7.5 mm", "35 mm", "KOL"]);
+    // The handle rosette was at +Z (room side): it ends up at -Y.
+    let (_, rozet) = dik(["32 mm", "76 mm", "14 mm"], ["31 mm", "KOL", "7 mm"]);
+    assert_eq!(rozet[1], "-7 mm");
+    let (_, genel) = dik(["1 mm", "1 mm", "1 mm"], ["0 mm", "0 mm", "FFB/2"]);
+    assert_eq!(genel[1], "-(FFB/2)");
+    // Every box the template sends is upright: its height is the old Y size (FFH for the stiles).
+    let c = govde_komutlari(&Girdi { ffh: 1200.0, ffb: 900.0, kol: 600.0, cocuk_kilidi: false });
+    let sol = c.iter().find(|x| x["params"]["name"] == "Kanat sol").unwrap();
+    assert_eq!(sol["params"]["height"], "FFH");
+    assert_eq!(sol["params"]["center"], json!(["31 mm", "35 mm", "FFH/2"]));
+}
+
+#[test]
+fn the_split_bars_fill_the_lower_zone_around_the_extra_lock() {
+    let g = Girdi { ffh: 1500.0, ffb: 900.0, kol: 600.0, cocuk_kilidi: false };
+    // Zone 120 .. 450 (330 mm); the lock 80 mm in the middle: 125 mm each side, cut 123.
+    assert_eq!(tijler(&g), vec![("TIJ_SOL_ALT_1", 123.0), ("TIJ_SOL_ALT_2", 123.0), ("TIJ_SOL_UST", 628.0), ("TIJ_UST", 358.0), ("TIJ_ALT", 628.0)]);
+    let c = govde_komutlari(&g);
+    let center = |n: &str| c.iter().find(|x| x["params"]["name"] == n).unwrap()["params"]["center"][2].clone();
+    assert_eq!(center(EK_KILIT), "(KA + KOL - IS/2)/2");
+    assert_eq!(center(TIJ_SOL_ALT_1), "(KA + (KA + KOL - IS/2)/2 - EK/2)/2");
+    assert_eq!(center(TIJ_SOL_ALT_2), "((KA + KOL - IS/2)/2 + EK/2 + KOL - IS/2)/2");
+    // The same expressions by hand: lock centre 285, bar 1 centre 182.5, bar 2 centre 387.5.
+    let (ka, is, ek, kol) = (120.0, 300.0, 80.0, 600.0);
+    let lock = (ka + kol - is / 2.0) / 2.0;
+    assert_eq!(lock, 285.0);
+    assert_eq!((ka + lock - ek / 2.0) / 2.0, 182.5);
+    assert_eq!((lock + ek / 2.0 + kol - is / 2.0) / 2.0, 387.5);
+    // At or under 1200 mm the bar is whole.
+    let kucuk = tijler(&Girdi { ffh: 1200.0, ..g });
+    assert_eq!(kucuk[0], ("TIJ_SOL_ALT", 328.0));
+}
+
+#[test]
+fn the_rules_switch_the_lock_and_bars_together() {
+    let f = Anahtarlar { ek_kilit: 7, cocuk_kilidi: 9, tij_sol_alt: 3, tij_sol_alt_1: 4, tij_sol_alt_2: 5 };
+    let r = kurallar(&f);
     let rules = r["rules"].as_array().unwrap();
-    assert_eq!(rules.len(), 4);
-    let find = |id: &str| rules.iter().find(|x| x["id"] == id).unwrap().clone();
-    let off = find("ek-kilit-kapali");
+    assert_eq!(rules.len(), 10);
+    let effect = |operator: &str, feature: u64| {
+        rules
+            .iter()
+            .find(|x| x["condition"]["parameter"] == "FFH" && x["condition"]["operator"] == operator && x["effect"]["feature"] == feature)
+            .unwrap()["effect"]["value"]
+            .clone()
+    };
+    // FFH <= 1200: lock and split bars off, whole bar on; FFH > 1200: the opposite.
+    for (feature, kucukte) in [(7, true), (4, true), (5, true), (3, false)] {
+        assert_eq!(effect("le", feature), kucukte, "feature {feature} at FFH <= 1200");
+        assert_eq!(effect("gt", feature), !kucukte, "feature {feature} at FFH > 1200");
+    }
+    let ids: Vec<&str> = rules.iter().map(|x| x["id"].as_str().unwrap()).collect();
+    let mut unique = ids.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(unique.len(), ids.len(), "rule ids are unique");
+    let off = rules.iter().find(|x| x["id"] == "ek-kilit-kucuk").unwrap();
     assert_eq!(off["condition"], json!({"type": "parameter", "parameter": "FFH", "operator": "le", "expression": "1200 mm"}));
-    assert_eq!(off["effect"], json!({"type": "drive_suppression", "feature": 7, "value": true}));
-    assert_eq!(find("ek-kilit-acik")["condition"]["operator"], "gt");
-    assert_eq!(find("ek-kilit-acik")["effect"]["value"], false);
-    assert_eq!(find("cocuk-kilidi-kapali")["condition"], json!({"type": "parameter", "parameter": "CK", "operator": "eq", "expression": "0"}));
-    assert_eq!(find("cocuk-kilidi-kapali")["effect"], json!({"type": "drive_suppression", "feature": 9, "value": true}));
-    assert_eq!(find("cocuk-kilidi-acik")["effect"]["value"], false);
+    let ck = rules.iter().find(|x| x["id"] == "cocuk-kilidi-kapali").unwrap();
+    assert_eq!(ck["condition"], json!({"type": "parameter", "parameter": "CK", "operator": "eq", "expression": "0"}));
+    assert_eq!(ck["effect"], json!({"type": "drive_suppression", "feature": 9, "value": true}));
     for x in rules {
         // config_rules.rs refuses unknown fields: only these keys.
         let mut keys: Vec<&String> = x.as_object().unwrap().keys().collect();
@@ -98,7 +172,7 @@ fn the_scissor_and_tie_bars_match_the_parameter_formulas() {
     assert_eq!(makas(1000.0), 420.0);
     assert_eq!(makas(1001.0), 650.0);
     let t = tijler(&Girdi { ffh: 1200.0, ffb: 900.0, kol: 600.0, cocuk_kilidi: false });
-    assert_eq!(t, [("TIJ_SOL_ALT", 328.0), ("TIJ_SOL_UST", 328.0), ("TIJ_UST", 358.0), ("TIJ_ALT", 628.0)]);
+    assert_eq!(t, vec![("TIJ_SOL_ALT", 328.0), ("TIJ_SOL_UST", 328.0), ("TIJ_UST", 358.0), ("TIJ_ALT", 628.0)]);
 }
 
 #[test]
@@ -120,6 +194,10 @@ fn inputs_are_checked_before_anything_is_sent() {
     fails(json!({"FFB": "geniş"}), "FFB", "sayı");
     fails(json!({"cocuk_kilidi": "evet"}), "cocuk_kilidi", "true/false");
     fails(json!({"FFH": f64::MAX}), "FFH", "arasında");
+    // With the extra lock (FFH > 1200) each half of the lower bar needs 40 mm: KOL >= 434.
+    fails(json!({"FFH": 1500, "KOL": 433}), "KOL", "en az 434");
+    let mut ana = bos_tasarim(&[]);
+    assert!(calistir(&mut ana, &json!({"FFH": 1500, "KOL": 434})).is_ok());
 }
 
 #[test]

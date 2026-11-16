@@ -100,14 +100,14 @@
       "body_name": "Kanat sol",
       "center": [
         "31 mm",
-        "FFH/2",
-        "-35 mm"
+        "35 mm",
+        "FFH/2"
       ],
-      "height": "70 mm",
+      "height": "FFH",
       "length": "62 mm",
       "name": "Kanat sol",
       "operation": "new",
-      "width": "FFH"
+      "width": "70 mm"
     }
   },
   {
@@ -129,14 +129,14 @@
       "body_name": "Kanat sag",
       "center": [
         "FFB - 31 mm",
-        "FFH/2",
-        "-35 mm"
+        "35 mm",
+        "FFH/2"
       ],
-      "height": "70 mm",
+      "height": "FFH",
       "length": "62 mm",
       "name": "Kanat sag",
       "operation": "new",
-      "width": "FFH"
+      "width": "70 mm"
     }
   },
   {
@@ -158,14 +158,14 @@
       "body_name": "Kanat ust",
       "center": [
         "FFB/2",
-        "FFH - 31 mm",
-        "-35 mm"
+        "35 mm",
+        "FFH - 31 mm"
       ],
-      "height": "70 mm",
+      "height": "62 mm",
       "length": "FFB - 124 mm",
       "name": "Kanat ust",
       "operation": "new",
-      "width": "62 mm"
+      "width": "70 mm"
     }
   },
   {
@@ -187,14 +187,14 @@
       "body_name": "Kanat alt",
       "center": [
         "FFB/2",
-        "31 mm",
-        "-35 mm"
+        "35 mm",
+        "31 mm"
       ],
-      "height": "70 mm",
+      "height": "62 mm",
       "length": "FFB - 124 mm",
       "name": "Kanat alt",
       "operation": "new",
-      "width": "62 mm"
+      "width": "70 mm"
     }
   },
   {
@@ -216,14 +216,14 @@
       "body_name": "Cam",
       "center": [
         "FFB/2",
-        "FFH/2",
-        "-35 mm"
+        "35 mm",
+        "FFH/2"
       ],
-      "height": "6 mm",
+      "height": "FFH - 124 mm",
       "length": "FFB - 124 mm",
       "name": "Cam",
       "operation": "new",
-      "width": "FFH - 124 mm"
+      "width": "6 mm"
     }
   },
   {
@@ -246,14 +246,14 @@
       "body_name": "KA-02 dikey",
       "center": [
         "-7.5 mm",
-        "KA/2 - 7.5 mm",
-        "-35 mm"
+        "35 mm",
+        "KA/2 - 7.5 mm"
       ],
-      "height": "22 mm",
+      "height": "KA + 15 mm",
       "length": "15 mm",
       "name": "KA-02 dikey",
       "operation": "new",
-      "width": "KA + 15 mm"
+      "width": "22 mm"
     }
   },
   {
@@ -275,14 +275,14 @@
       "body_name": "KA-02 yatay",
       "center": [
         "KA/2",
-        "-7.5 mm",
-        "-35 mm"
+        "35 mm",
+        "-7.5 mm"
       ],
-      "height": "22 mm",
+      "height": "15 mm",
       "length": "KA",
       "name": "KA-02 yatay",
       "operation": "new",
-      "width": "15 mm"
+      "width": "22 mm"
     }
   },
   {
@@ -304,14 +304,14 @@
       "body_name": "KA-01 dikey",
       "center": [
         "-7.5 mm",
-        "FFH - KA/2 + 7.5 mm",
-        "-35 mm"
+        "35 mm",
+        "FFH - KA/2 + 7.5 mm"
       ],
-      "height": "22 mm",
+      "height": "KA + 15 mm",
       "length": "15 mm",
       "name": "KA-01 dikey",
       "operation": "new",
-      "width": "KA + 15 mm"
+      "width": "22 mm"
     }
   },
   {
@@ -333,14 +333,14 @@
       "body_name": "KA-01 yatay",
       "center": [
         "KA/2",
-        "FFH + 7.5 mm",
-        "-35 mm"
+        "35 mm",
+        "FFH + 7.5 mm"
       ],
-      "height": "22 mm",
+      "height": "15 mm",
       "length": "KA",
       "name": "KA-01 yatay",
       "operation": "new",
-      "width": "15 mm"
+      "width": "22 mm"
     }
   },
   {
@@ -362,14 +362,14 @@
       "body_name": "IS-300 ispanyolet",
       "center": [
         "-7.5 mm",
-        "KOL",
-        "-35 mm"
+        "35 mm",
+        "KOL"
       ],
-      "height": "22 mm",
+      "height": "IS",
       "length": "15 mm",
       "name": "IS-300 ispanyolet",
       "operation": "new",
-      "width": "IS"
+      "width": "22 mm"
     }
   },
   {
@@ -391,14 +391,14 @@
       "body_name": "KOL rozet",
       "center": [
         "31 mm",
-        "KOL",
-        "7 mm"
+        "-7 mm",
+        "KOL"
       ],
-      "height": "14 mm",
+      "height": "76 mm",
       "length": "32 mm",
       "name": "KOL rozet",
       "operation": "new",
-      "width": "76 mm"
+      "width": "14 mm"
     }
   },
   {
@@ -420,14 +420,14 @@
       "body_name": "KOL tutamak",
       "center": [
         "31 mm",
-        "KOL - 62 mm",
-        "22 mm"
+        "-22 mm",
+        "KOL - 62 mm"
       ],
-      "height": "16 mm",
+      "height": "150 mm",
       "length": "20 mm",
       "name": "KOL tutamak",
       "operation": "new",
-      "width": "150 mm"
+      "width": "16 mm"
     }
   },
   {
@@ -449,14 +449,14 @@
       "body_name": "Makas ust",
       "center": [
         "FFB - MK/2 + 7.5 mm",
-        "FFH + 7.5 mm",
-        "-35 mm"
+        "35 mm",
+        "FFH + 7.5 mm"
       ],
-      "height": "22 mm",
+      "height": "15 mm",
       "length": "MK + 15 mm",
       "name": "Makas ust",
       "operation": "new",
-      "width": "15 mm"
+      "width": "22 mm"
     }
   },
   {
@@ -478,14 +478,14 @@
       "body_name": "Makas sag",
       "center": [
         "FFB + 7.5 mm",
-        "FFH - MKR/2",
-        "-35 mm"
+        "35 mm",
+        "FFH - MKR/2"
       ],
-      "height": "22 mm",
+      "height": "MKR",
       "length": "15 mm",
       "name": "Makas sag",
       "operation": "new",
-      "width": "MKR"
+      "width": "22 mm"
     }
   },
   {
@@ -507,14 +507,14 @@
       "body_name": "AM alt",
       "center": [
         "FFB - AM/2 + 7.5 mm",
-        "-7.5 mm",
-        "-35 mm"
+        "35 mm",
+        "-7.5 mm"
       ],
-      "height": "22 mm",
+      "height": "15 mm",
       "length": "AM + 15 mm",
       "name": "AM alt",
       "operation": "new",
-      "width": "15 mm"
+      "width": "22 mm"
     }
   },
   {
@@ -536,14 +536,14 @@
       "body_name": "AM sag",
       "center": [
         "FFB + 7.5 mm",
-        "AM/2",
-        "-35 mm"
+        "35 mm",
+        "AM/2"
       ],
-      "height": "22 mm",
+      "height": "AM",
       "length": "15 mm",
       "name": "AM sag",
       "operation": "new",
-      "width": "AM"
+      "width": "22 mm"
     }
   },
   {
@@ -565,14 +565,14 @@
       "body_name": "TIJ sol alt",
       "center": [
         "-5 mm",
-        "(KA + KOL - IS/2)/2",
-        "-35 mm"
+        "35 mm",
+        "(KA + KOL - IS/2)/2"
       ],
-      "height": "10 mm",
+      "height": "TIJ_SOL_ALT",
       "length": "7 mm",
       "name": "TIJ sol alt",
       "operation": "new",
-      "width": "TIJ_SOL_ALT"
+      "width": "10 mm"
     }
   },
   {
@@ -594,14 +594,14 @@
       "body_name": "TIJ sol ust",
       "center": [
         "-5 mm",
-        "(KOL + IS/2 + FFH - KA)/2",
-        "-35 mm"
+        "35 mm",
+        "(KOL + IS/2 + FFH - KA)/2"
       ],
-      "height": "10 mm",
+      "height": "TIJ_SOL_UST",
       "length": "7 mm",
       "name": "TIJ sol ust",
       "operation": "new",
-      "width": "TIJ_SOL_UST"
+      "width": "10 mm"
     }
   },
   {
@@ -623,14 +623,14 @@
       "body_name": "TIJ ust",
       "center": [
         "(KA + FFB - MK)/2",
-        "FFH + 5 mm",
-        "-35 mm"
+        "35 mm",
+        "FFH + 5 mm"
       ],
-      "height": "10 mm",
+      "height": "7 mm",
       "length": "TIJ_UST",
       "name": "TIJ ust",
       "operation": "new",
-      "width": "7 mm"
+      "width": "10 mm"
     }
   },
   {
@@ -652,14 +652,14 @@
       "body_name": "TIJ alt",
       "center": [
         "(KA + FFB - AM)/2",
-        "-5 mm",
-        "-35 mm"
+        "35 mm",
+        "-5 mm"
       ],
-      "height": "10 mm",
+      "height": "7 mm",
       "length": "TIJ_ALT",
       "name": "TIJ alt",
       "operation": "new",
-      "width": "7 mm"
+      "width": "10 mm"
     }
   },
   {
@@ -676,19 +676,40 @@
     }
   },
   {
+    "command": "parameters.add",
+    "params": {
+      "expression": "80 mm",
+      "name": "EK"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "((KOL - IS/2 - KA) - EK)/2 - 2*PAY",
+      "name": "TIJ_SOL_ALT_1"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "((KOL - IS/2 - KA) - EK)/2 - 2*PAY",
+      "name": "TIJ_SOL_ALT_2"
+    }
+  },
+  {
     "command": "solid.box",
     "params": {
       "body_name": "EK KILIT 1",
       "center": [
         "-7.5 mm",
-        "(KOL + IS/2 + FFH - KA)/2",
-        "-35 mm"
+        "35 mm",
+        "(KA + KOL - IS/2)/2"
       ],
-      "height": "24 mm",
+      "height": "EK",
       "length": "16 mm",
       "name": "EK KILIT 1",
       "operation": "new",
-      "width": "60 mm"
+      "width": "24 mm"
     }
   },
   {
@@ -707,17 +728,75 @@
   {
     "command": "solid.box",
     "params": {
+      "body_name": "TIJ sol alt 1",
+      "center": [
+        "-5 mm",
+        "35 mm",
+        "(KA + (KA + KOL - IS/2)/2 - EK/2)/2"
+      ],
+      "height": "TIJ_SOL_ALT_1",
+      "length": "7 mm",
+      "name": "TIJ sol alt 1",
+      "operation": "new",
+      "width": "10 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "TIJ sol alt 1"
+      ],
+      "color": [
+        214,
+        39,
+        40
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "TIJ sol alt 2",
+      "center": [
+        "-5 mm",
+        "35 mm",
+        "((KA + KOL - IS/2)/2 + EK/2 + KOL - IS/2)/2"
+      ],
+      "height": "TIJ_SOL_ALT_2",
+      "length": "7 mm",
+      "name": "TIJ sol alt 2",
+      "operation": "new",
+      "width": "10 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "TIJ sol alt 2"
+      ],
+      "color": [
+        214,
+        39,
+        40
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
       "body_name": "COCUK KILIDI",
       "center": [
         "31 mm",
-        "KOL + 58 mm",
-        "7 mm"
+        "-7 mm",
+        "KOL + 58 mm"
       ],
-      "height": "14 mm",
+      "height": "30 mm",
       "length": "32 mm",
       "name": "COCUK KILIDI",
       "operation": "new",
-      "width": "30 mm"
+      "width": "14 mm"
     }
   },
   {
@@ -747,7 +826,10 @@
     "params": {
       "features": [
         "EK KILIT 1",
-        "COCUK KILIDI"
+        "COCUK KILIDI",
+        "TIJ sol alt",
+        "TIJ sol alt 1",
+        "TIJ sol alt 2"
       ],
       "params": [
         "FFH",
@@ -774,7 +856,7 @@
             "value": true
           },
           "enabled": true,
-          "id": "ek-kilit-kapali",
+          "id": "ek-kilit-kucuk",
           "name": "Ek kilit: FFH 1200 mm ve altında yok"
         },
         {
@@ -790,8 +872,104 @@
             "value": false
           },
           "enabled": true,
-          "id": "ek-kilit-acik",
+          "id": "ek-kilit-buyuk",
           "name": "Ek kilit: FFH 1200 mm üstünde var"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "le",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 121,
+            "type": "drive_suppression",
+            "value": true
+          },
+          "enabled": true,
+          "id": "tij-sol-alt-1-kucuk",
+          "name": "Sol alt tij 1. parça: FFH 1200 mm ve altında yok"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "gt",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 121,
+            "type": "drive_suppression",
+            "value": false
+          },
+          "enabled": true,
+          "id": "tij-sol-alt-1-buyuk",
+          "name": "Sol alt tij 1. parça: FFH 1200 mm üstünde var"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "le",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 122,
+            "type": "drive_suppression",
+            "value": true
+          },
+          "enabled": true,
+          "id": "tij-sol-alt-2-kucuk",
+          "name": "Sol alt tij 2. parça: FFH 1200 mm ve altında yok"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "gt",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 122,
+            "type": "drive_suppression",
+            "value": false
+          },
+          "enabled": true,
+          "id": "tij-sol-alt-2-buyuk",
+          "name": "Sol alt tij 2. parça: FFH 1200 mm üstünde var"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "le",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 116,
+            "type": "drive_suppression",
+            "value": false
+          },
+          "enabled": true,
+          "id": "tij-sol-alt-kucuk",
+          "name": "Sol alt tij (bölünmemiş): FFH 1200 mm ve altında var"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "gt",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 116,
+            "type": "drive_suppression",
+            "value": true
+          },
+          "enabled": true,
+          "id": "tij-sol-alt-buyuk",
+          "name": "Sol alt tij (bölünmemiş): FFH 1200 mm üstünde yok"
         },
         {
           "condition": {
@@ -801,7 +979,7 @@
             "type": "parameter"
           },
           "effect": {
-            "feature": 121,
+            "feature": 123,
             "type": "drive_suppression",
             "value": true
           },
@@ -817,7 +995,7 @@
             "type": "parameter"
           },
           "effect": {
-            "feature": 121,
+            "feature": 123,
             "type": "drive_suppression",
             "value": false
           },

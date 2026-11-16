@@ -98,19 +98,29 @@ Tasarımı okur, hiçbir şeyi değiştirmez; izin verilen **cikti** klasörüne
 
 Kurduğu global değişkenler: `FFH`, `FFB`, `KOL`, `KA = 120 mm`, `IS = 300 mm`, `AM = 150 mm`,
 `MKR = 180 mm`, `PAY = 1 mm`, `MK` (makas boyu: FFB ≤ 650 → 220, ≤ 1000 → 420, üstü → 650),
-`TIJ_SOL_ALT`, `TIJ_SOL_UST`, `TIJ_UST`, `TIJ_ALT` (tij kesim boyları) ve `CK` (çocuk kilidi:
-1 var, 0 yok).
+`TIJ_SOL_ALT`, `TIJ_SOL_UST`, `TIJ_UST`, `TIJ_ALT` (tij kesim boyları), `EK = 80 mm` (ek kilit
+boyu), `TIJ_SOL_ALT_1`, `TIJ_SOL_ALT_2` (ek kilit gelince sol alt tijin iki parçası) ve `CK`
+(çocuk kilidi: 1 var, 0 yok).
+
+Model **dik** kurulur (SolidCraft'ta yukarı yön Z): kanat XZ düzleminde durur, oda tarafı (kol)
+-Y yönüne bakar. Sürüm 0.1.1'den önce model yatık kuruluyordu.
 
 Kurduğu parçalar: kanat profili (4), cam, köşe aktarmalar KA-01/KA-02, ispanyolet IS-300, kol
-rozeti ve tutamağı, makas, alt menteşe, 4 tij; ayrıca **EK KILIT 1** (kol tarafında, üst tijin
-ortasında) ve **COCUK KILIDI** (kol rozetinin üstünde).
+rozeti ve tutamağı, makas, alt menteşe, 4 tij; ayrıca **EK KILIT 1** (kol tarafında, alt köşe
+aktarma ile ispanyoletin altı arasındaki bölgenin tam ortasında), bu kilidin iki yanındaki
+**TIJ sol alt 1** / **TIJ sol alt 2** ve **COCUK KILIDI** (kol rozetinin üstünde).
+
+FFH 1200 mm'nin üstünde ek kilit gelir ve sol alt tij ikiye bölünür: `TIJ sol alt` bastırılır,
+yerine iki parça gelir. Her parça en az 40 mm olmalı; bu yüzden ek kilitli ölçülerde KOL en az
+434 mm olmalı (şablon küçük değeri Türkçe uyarıyla reddeder). Tij listesi (4.2) bastırılmış
+gövdeleri listelemez, yani her ölçüde kesilecek tijler doğru çıkar.
 
 Konfigürasyon kuralları (aşağıdaki 5. bölüm):
 
 | Kural | Koşul | Etki |
 |---|---|---|
-| Ek kilit: FFH 1200 mm ve altında yok | FFH ≤ 1200 mm | EK KILIT 1 bastırılır |
-| Ek kilit: FFH 1200 mm üstünde var | FFH > 1200 mm | EK KILIT 1 geri gelir |
+| Ek kilit / sol alt tij parçaları: FFH 1200 mm ve altında yok | FFH ≤ 1200 mm | EK KILIT 1, TIJ sol alt 1 ve 2 bastırılır; TIJ sol alt gelir |
+| Ek kilit / sol alt tij parçaları: FFH 1200 mm üstünde var | FFH > 1200 mm | EK KILIT 1, TIJ sol alt 1 ve 2 gelir; TIJ sol alt bastırılır |
 | Çocuk kilidi: CK = 0 ise yok | CK = 0 | COCUK KILIDI bastırılır |
 | Çocuk kilidi: CK = 1 ise var | CK ≠ 0 | COCUK KILIDI geri gelir |
 

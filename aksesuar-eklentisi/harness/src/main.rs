@@ -184,13 +184,19 @@ fn run() -> Result<(), String> {
     let lines = r.map_err(|e| format!("ozellikler: {e}"))?;
     check(host.sent.is_empty() && lines.as_array().is_some_and(|l| l.len() > 10), "ozellikler returns its help lines")?;
 
-    // The template: 1 + 13 parameters + 22 boxes and looks + CK + configure, rules, activate.
+    // The template: 1 + 13 parameters + 20 boxes and looks, 3 more parameters + 4 boxes and
+    // looks + CK + configure, rules, activate.
     let (host, r) = entry(json!({}), "cift-acilim-sablonu", json!({"FFH": 1400, "FFB": 1100, "KOL": 700, "cocuk_kilidi": true}));
     let v = r.map_err(|e| format!("cift-acilim-sablonu: {e}"))?;
     let names = host.names();
-    check(names.len() == 62, &format!("template sends 62 commands, sent {}", names.len()))?;
+    check(names.len() == 69, &format!("template sends 69 commands, sent {}", names.len()))?;
     check(names.last() == Some(&"config.activate"), "template ends by activating its configuration")?;
-    check(v["ek_kilit"] == 121 && v["cocuk_kilidi"] == 122, &format!("template reads the lock ids: {v}"))?;
+    check(
+        v["ek_kilit"] == 121 && v["cocuk_kilidi"] == 124 && v["tij_sol_alt"] == 117 && v["tij_sol_alt_1"] == 122 && v["tij_sol_alt_2"] == 123,
+        &format!("template reads the switched boxes' ids: {v}"),
+    )?;
+    let rules = host.sent.iter().find(|(c, _)| c == "config.rule").map(|(_, p)| p["rules"].as_array().map_or(0, Vec::len));
+    check(rules == Some(10), "template sends 10 configuration rules")?;
     let ck = host.sent.iter().find(|(c, p)| c == "parameters.add" && p["name"] == "CK").map(|(_, p)| p["expression"].clone());
     check(ck == Some(json!("1")), "child lock checkbox sets CK = 1")?;
     check(host.commits == 1 && host.rollbacks == 0, "template commits once")?;

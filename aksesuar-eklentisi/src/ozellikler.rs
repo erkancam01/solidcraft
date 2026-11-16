@@ -25,7 +25,7 @@ pub const SATIRLAR: &[&str] = &[
     "   kanat profili, cam, köşe aktarmalar, ispanyolet ve kol, makas, alt menteşe, tijler.",
     "   Parametreler: FFH, FFB, KOL, KA=120, IS=300, AM=150, MKR=180, PAY=1, MK (FFB'ye göre 220/420/650),",
     "   TIJ_SOL_ALT, TIJ_SOL_UST, TIJ_UST, TIJ_ALT (kesim boyları) ve CK (çocuk kilidi 1/0).",
-    "   Kurallar: FFH ≤ 1200 iken 'EK KILIT 1' bastırılır; CK = 0 iken 'COCUK KILIDI' bastırılır.",
+    "   Kurallar: FFH ≤ 1200 iken 'EK KILIT 1' bastırılır ve sol alt tij tek parçadır; FFH > 1200 iken ek kilit gelir, sol alt tij ikiye bölünür. CK = 0 iken 'COCUK KILIDI' bastırılır.",
     "   Global Değişkenler panelinde FFH ya da CK'yi değiştirmeniz yeter; kilitler kendiliğinden gelip gider.",
     "   Kuralları Tasarım Tablosu > 'Kural ekle veya düzenle' bölümünde (Konfigürasyon kuralları) görebilir, değiştirebilirsiniz.",
     "",

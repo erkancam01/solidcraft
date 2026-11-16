@@ -65,10 +65,13 @@ pub fn alan(text: &str) -> String {
     if t.contains([';', '"']) { format!("\"{}\"", t.replace('"', "\"\"")) } else { t }
 }
 
-/// The bodies of a `document.inspect {measure: true}` reply.
+/// The bodies of a `document.inspect {measure: true}` reply. A suppressed feature makes no body,
+/// so its bodies are not in the reply (a template's switched-off bar is not listed); a body the
+/// timeline removes further on (`removed_later`) is left out too.
 pub fn govdeler(reply: &Value) -> Vec<Govde> {
     let Some(list) = reply.get("bodies").and_then(Value::as_array) else { return Vec::new() };
     list.iter()
+        .filter(|b| b.get("removed_later").and_then(Value::as_bool) != Some(true))
         .filter_map(|b| {
             let ad = b.get("name")?.as_str()?.to_string();
             let olcu = b.get("bbox").and_then(|bb| {

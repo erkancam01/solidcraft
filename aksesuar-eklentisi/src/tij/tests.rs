@@ -138,3 +138,18 @@ fn an_empty_design_writes_nothing() {
     assert!(matches!(&e, Hata::Girdi { neden, .. } if neden.contains("gövde yok")), "{e:?}");
     assert!(ana.dosyalar.is_empty());
 }
+
+#[test]
+fn only_bodies_the_design_has_now_are_listed() {
+    // A suppressed feature makes no body, so `document.inspect` does not list it (the template's
+    // switched-off "TIJ sol alt" is simply absent); a body removed further on is skipped.
+    let reply = json!({"bodies": [
+        body("TIJ sol alt 1", [0.0, 0.0, 0.0], [7.0, 10.0, 123.0]),
+        body("TIJ sol alt 2", [0.0, 0.0, 0.0], [7.0, 10.0, 123.0]),
+        {"name": "TIJ eski", "removed_later": true, "bbox": {"min": [0, 0, 0], "max": [1, 1, 500]}}
+    ]});
+    let g = govdeler(&reply);
+    let names: Vec<&str> = g.iter().map(|b| b.ad.as_str()).collect();
+    assert_eq!(names, ["TIJ sol alt 1", "TIJ sol alt 2"]);
+    assert_eq!(g[0].olcu.map(kesim_boyu), Some(123.0));
+}
