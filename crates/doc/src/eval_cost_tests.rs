@@ -2451,6 +2451,35 @@ fn a_circular_pattern_of_a_through_hole_cuts_its_copies_at_once() {
     assert!(model.results.iter().any(|r| r.id == pattern && r.warning.is_none()));
 }
 
+/// A pattern count driven by a parameter may come to 1 or less (a template's "extra locks"): the
+/// pattern keeps the original alone and makes no copies, with no error, and makes them again
+/// when the parameter rises (3 -> 1 -> 0 -> -2 -> 3). More than the most instances is refused.
+#[test]
+fn a_pattern_count_of_one_or_less_makes_no_copies() {
+    let mut doc = Document::new("locks");
+    doc.set_param("locks", "3", Some(""), None).unwrap();
+    let pattern = disc_with_hole_pattern(&mut doc, 20.0, 3);
+    if let Some(FeatureKind::Pattern { pattern: PatternKind::Circular { count, .. }, .. }) = doc.feature_mut(pattern).map(|f| &mut f.kind) {
+        *count = "locks".into();
+    }
+    let hole = std::f64::consts::PI * 1.75 * 1.75 * 1.5;
+    let disc = std::f64::consts::PI * 2500.0 * 1.5;
+    let mut model = Model::new();
+    for (locks, holes) in [("3", 3.0), ("1", 1.0), ("0", 1.0), ("-2", 1.0), ("3", 3.0)] {
+        doc.set_param("locks", locks, Some(""), None).unwrap();
+        model.evaluate(&doc);
+        assert!(model.results.iter().all(|r| r.error.is_none()), "locks = {locks}: {:?}", model.results);
+        let v = disc_volume(&model);
+        assert!((v - (disc - holes * hole)).abs() < 1e-3 * hole, "locks = {locks}: {v}");
+        let Some(FeatureKind::Pattern { pattern: kind, .. }) = doc.feature(pattern).map(|f| &f.kind) else { panic!("the pattern") };
+        assert_eq!(crate::pattern_matrices(&doc, &model.state(), kind).unwrap().len(), holes as usize - 1, "locks = {locks}");
+    }
+    doc.set_param("locks", "1001", Some(""), None).unwrap();
+    model.evaluate(&doc);
+    let error = model.results.iter().find_map(|r| r.error.clone()).unwrap_or_default();
+    assert!(error.contains("at most 1000"), "{error}");
+}
+
 #[test]
 fn copies_of_a_hole_that_come_close_are_cut_one_by_one() {
     // At 8.5 mm radius, 16 copies of a 3.5 mm hole overlap their neighbours: they are not apart,

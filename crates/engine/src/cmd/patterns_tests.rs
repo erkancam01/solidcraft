@@ -422,6 +422,63 @@ fn pattern_on_path_spacing_extent_and_flip() {
     assert!(rel(volume(&mut s), PLATE - HOLE) < 1e-4);
 }
 
+/// A count driven by a parameter may come to 1 or less (a template's "extra locks = 0"): the
+/// pattern keeps the original alone and makes no copies, without an error, and makes them again
+/// when the parameter rises. A later feature that named a copy now gone reports its own error.
+#[test]
+fn a_pattern_count_of_one_or_less_makes_no_copies_and_a_parameter_brings_them_back() {
+    let error = |s: &Session| s.model.results.iter().find_map(|r| r.error.clone());
+    let mut s = plate_with_hole();
+    run(&mut s, "parameters.add", json!({"name": "locks", "expression": "3", "unit": ""}));
+    run(&mut s, "solid.pattern.rectangular", json!({"features": ["Hole1"], "dir1": [1, 0, 0], "count1": "locks", "spacing1": 20, "name": "Row"}));
+    assert!(rel(volume(&mut s), PLATE - 3.0 * HOLE) < 1e-4);
+    for (n, holes) in [("1", 1.0), ("0", 1.0), ("-2", 1.0), ("3", 3.0)] {
+        run(&mut s, "parameters.change", json!({"name": "locks", "expression": n}));
+        assert_eq!(error(&s), None, "locks = {n}");
+        assert!(rel(volume(&mut s), PLATE - holes * HOLE) < 1e-4, "locks = {n}");
+    }
+
+    // Typed: each kind of pattern takes 1 or 0 and makes no copies; a second direction of 0
+    // leaves the first.
+    for (cmd, p, holes) in [
+        ("solid.pattern.path", json!({"features": ["Hole1"], "path_sketch": "Path", "path": ["l1"], "count": 1, "spacing": 20}), 1.0),
+        ("solid.pattern.circular", json!({"features": ["Hole1"], "axis": "Z", "count": 0}), 1.0),
+        ("solid.pattern.circular", json!({"features": ["Hole1"], "axis": "Z", "count": "1", "angle": "90 deg"}), 1.0),
+        ("solid.pattern.rectangular", json!({"features": ["Hole1"], "dir1": [1, 0, 0], "count1": 1, "spacing1": 20}), 1.0),
+        (
+            "solid.pattern.rectangular",
+            json!({"features": ["Hole1"], "dir1": [1, 0, 0], "count1": 2, "spacing1": 20, "dir2": [0, 1, 0], "count2": 0, "spacing2": 20}),
+            2.0,
+        ),
+    ] {
+        let mut s = plate_with_hole();
+        run(&mut s, cmd, p.clone());
+        assert_eq!(error(&s), None, "{cmd} {p}");
+        assert!(rel(volume(&mut s), PLATE - holes * HOLE) < 1e-4, "{cmd} {p}");
+    }
+    // Too many is still refused.
+    let mut s = plate_with_hole();
+    assert!(s.execute("solid.pattern.rectangular", &json!({"features": ["Hole1"], "dir1": [1, 0, 0], "count1": 1001, "spacing1": 0.01})).is_err());
+
+    // Bodies: a count of 1 leaves the body alone. A pattern of one of the copies fails when the
+    // count takes that copy away, as a reported feature error, and works again when it returns.
+    let mut s = Session::default();
+    run(&mut s, "parameters.add", json!({"name": "n", "expression": "2", "unit": ""}));
+    run(&mut s, "solid.box", json!({"length": 10, "width": 10, "height": 10, "body_name": "Cube"}));
+    let r = run(&mut s, "solid.pattern.rectangular", json!({"bodies": ["Cube"], "dir1": [1, 0, 0], "count1": "n", "spacing1": 20}));
+    let copy = r["created_bodies"][0].as_str().unwrap_or_default().to_string();
+    assert!(!copy.is_empty(), "{r}");
+    run(&mut s, "solid.pattern.rectangular", json!({"bodies": [copy], "dir1": [0, 1, 0], "count1": 2, "spacing1": 20}));
+    assert_eq!(run(&mut s, "inspect.measure", json!({}))["body_count"], 3);
+    run(&mut s, "parameters.change", json!({"name": "n", "expression": "1"}));
+    let failed = error(&s).unwrap_or_default();
+    assert!(failed.contains(&copy), "the later pattern names the copy it lost: {failed}");
+    assert_eq!(run(&mut s, "inspect.measure", json!({}))["body_count"], 1);
+    run(&mut s, "parameters.change", json!({"name": "n", "expression": "2"}));
+    assert_eq!(error(&s), None);
+    assert_eq!(run(&mut s, "inspect.measure", json!({}))["body_count"], 3);
+}
+
 #[test]
 fn patterns_of_bodies() {
     let mut s = Session::default();

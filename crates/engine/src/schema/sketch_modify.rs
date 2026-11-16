@@ -1039,8 +1039,8 @@ fn pattern_count(p: &Value, key: &str) -> Read<Option<Value>> {
     let value = quantity(p, key, &format!("`{key}` must be a number or expression"))?;
     if let Some(Value::Number(n)) = &value {
         let n = n.as_f64().unwrap_or(f64::NAN);
-        if !(1.0..=MAX_COPIES as f64).contains(&n) || n.fract() != 0.0 {
-            return Err(format!("`{key}` must be a positive integer from 1 to {MAX_COPIES}"));
+        if !n.is_finite() || n > MAX_COPIES as f64 || n.fract() != 0.0 {
+            return Err(format!("`{key}` must be a whole number up to {MAX_COPIES} (1 or less makes no copies)"));
         }
     }
     Ok(value)
@@ -1110,8 +1110,8 @@ pub struct CircularPatternParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "PointOrId")]
     pub center: Option<PointOrId>,
-    /// How many, the original included: a whole number from 2 to 500 or a unitless expression
-    /// (kept as an expression). Left out only with `pattern`.
+    /// How many, the original included: a whole number up to 500 or a unitless expression
+    /// (kept as an expression); 1 or less makes no copies. Left out only with `pattern`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "count_schema")]
     pub count: Option<Value>,
@@ -1139,7 +1139,9 @@ pub struct CircularPatternParams {
 }
 
 fn count_schema(_: &mut SchemaGenerator) -> Schema {
-    number_or_expression("A whole number from 1 to 500 (a circular pattern needs at least 2 to make a copy), or an expression for one.")
+    number_or_expression(
+        "A whole number up to 500, the original included, or an expression for one. 1 or less (0, or a negative expression) keeps the original alone and makes no copies.",
+    )
 }
 
 fn pattern_angle_schema(_: &mut SchemaGenerator) -> Schema {
@@ -1188,8 +1190,8 @@ pub struct RectangularPatternParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "StringList")]
     pub entities: Option<Vec<String>>,
-    /// How many along the first direction, the original included: a whole number from 1 to 500
-    /// or a unitless expression. Left out only with `pattern`.
+    /// How many along the first direction, the original included: a whole number up to 500 or a
+    /// unitless expression; 1 or less makes no copies that way. Left out only with `pattern`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "count_schema")]
     pub count: Option<Value>,
@@ -1198,8 +1200,8 @@ pub struct RectangularPatternParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "spacing_schema")]
     pub spacing: Option<Value>,
-    /// How many along the second direction, a whole number from 1 to 500 or a unitless
-    /// expression. Default: 1.
+    /// How many along the second direction, a whole number up to 500 or a unitless expression;
+    /// 1 or less makes no copies that way. Default: 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "count_schema")]
     pub count2: Option<Value>,

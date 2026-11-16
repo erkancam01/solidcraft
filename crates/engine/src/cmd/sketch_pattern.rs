@@ -222,12 +222,13 @@ pub(super) fn run(s: &mut Session, p: &Value, circular: bool) -> Result<Value> {
     reply(cmd, PatternResult { pattern, center, curves, constraints, sketch: info, created: None, param_warnings: Vec::new() })
 }
 
+/// A pattern count: a whole number up to `MAX_COPIES`; 1 or less makes no copies that way.
 fn count(p: &Value, k: &str, cmd: &str) -> Result<usize> {
     let n = num(p, k).ok_or_else(|| bad(cmd, format!("`{k}` must be a number or expression")))?;
-    if !(1.0..=MAX_COPIES as f64).contains(&n) || n.fract() != 0.0 {
-        return Err(bad(cmd, format!("`{k}` must be a positive integer from 1 to {MAX_COPIES}")));
+    if n > MAX_COPIES as f64 || n.fract() != 0.0 {
+        return Err(bad(cmd, format!("`{k}` must be a whole number up to {MAX_COPIES} (1 or less makes no copies)")));
     }
-    Ok(n as usize)
+    Ok(n.max(1.0) as usize)
 }
 
 fn direction_ref(sk: &Sketch, p: &Value, key: &str, cmd: &str) -> Result<Option<String>> {

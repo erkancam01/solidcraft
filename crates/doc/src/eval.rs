@@ -8551,12 +8551,14 @@ pub fn pattern_matrices(doc: &Document, st: &ModelState, p: &crate::PatternKind)
 }
 
 fn pattern_transforms(doc: &Document, vals: &BTreeMap<String, Value>, st: &ModelState, component: u64, p: &crate::PatternKind) -> Result<Vec<Mat>> {
+    // A count of 1 or less keeps the original alone and makes no copies, so a count driven by
+    // a parameter ("extra locks") can come to none without failing the pattern.
     let count = |e: &str| -> Result<usize> {
         let n = expr::eval_count(e, vals)?;
-        if !(1.0..=MAX_INSTANCES as f64).contains(&n) {
-            return Err(DocError::Invalid(format!("pattern count must be 1…{MAX_INSTANCES}")));
+        if n > MAX_INSTANCES as f64 {
+            return Err(DocError::Invalid(format!("pattern count must be at most {MAX_INSTANCES}")));
         }
-        Ok(n as usize)
+        Ok(n.max(1.0) as usize)
     };
     let mut out = Vec::new();
     match p {
@@ -9109,6 +9111,10 @@ fn replay(
     // mean the original's edges, which the first hole's copy has already cut into.
     let named_from = plan.iter().any(|(src, _, _)| src.face_names.iter().chain(&src.edge_names).any(|n| !n.is_empty())).then(|| st.clone());
     for (src, mats, first) in &plan {
+        // A count of 1 or less makes no copies: nothing to repeat for this source.
+        if mats.is_empty() {
+            continue;
+        }
         // A fillet or chamfer repeats at the copied edges.
         if let FeatureKind::Fillet { edges, radius, .. } | FeatureKind::Chamfer { edges, distance: radius, .. } = &src.kind {
             let r = val(vals, radius, Kind::Length)?;

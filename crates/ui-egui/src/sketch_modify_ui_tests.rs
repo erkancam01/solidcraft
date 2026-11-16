@@ -818,10 +818,16 @@ fn bad_counts_and_an_empty_selection_are_refused_before_the_command_runs() {
     let d = h.app.dialog.clone().unwrap();
     assert!(apply_commands(&h.app, &d).unwrap_err().contains("Select"));
     h.app.dialog.as_mut().unwrap().inputs[0].items = vec![Sel::SketchCurve { id, sketch: None }];
-    for bad in ["0", "2.5", "501", "wat"] {
+    for bad in ["2.5", "501", "wat"] {
         rect(&mut h, bad, "20", "1", "20");
         let d = h.app.dialog.clone().unwrap();
         assert!(apply_commands(&h.app, &d).is_err(), "count {bad} was accepted");
+    }
+    // 1 or less makes no copies that way: a count that comes to none is not refused.
+    for none in ["1", "0", "-2"] {
+        rect(&mut h, none, "20", "1", "20");
+        let d = h.app.dialog.clone().unwrap();
+        assert!(apply_commands(&h.app, &d).is_ok(), "count {none} was refused");
     }
     rect(&mut h, "5", "0", "1", "20");
     let d = h.app.dialog.clone().unwrap();
@@ -1032,16 +1038,22 @@ fn an_angle_expression_reaches_the_command_as_text() {
 }
 
 #[test]
-fn a_missing_centre_a_short_count_and_a_bad_angle_are_all_refused() {
+fn a_missing_centre_a_fractional_count_and_a_bad_angle_are_all_refused() {
     let (mut h, _) = open_circ();
     for bad in ["0", "400 deg", "wat"] {
         circ(&mut h, "4", bad);
         let d = h.app.dialog.clone().unwrap();
         assert!(apply_commands(&h.app, &d).unwrap_err().contains("Total angle"), "angle {bad} was accepted");
     }
-    circ(&mut h, "1", "360 deg");
+    circ(&mut h, "2.5", "360 deg");
     let d = h.app.dialog.clone().unwrap();
     assert!(apply_commands(&h.app, &d).unwrap_err().contains("Quantity"));
+    // A Quantity of 1 (or an expression that comes to 0) makes no copies, and is not refused.
+    for none in ["1", "0"] {
+        circ(&mut h, none, "360 deg");
+        let d = h.app.dialog.clone().unwrap();
+        assert!(apply_commands(&h.app, &d).is_ok(), "Quantity {none} was refused");
+    }
     circ(&mut h, "4", "360 deg");
     h.app.dialog.as_mut().unwrap().inputs[1].items.clear();
     let d = h.app.dialog.clone().unwrap();

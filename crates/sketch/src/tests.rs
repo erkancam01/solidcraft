@@ -2148,6 +2148,74 @@ fn pattern_upkeep_does_not_search_ids_per_copy() {
     assert!(sk.curves.iter().all(|c| c.reversed));
 }
 
+/// A pattern Quantity of 1 or less keeps the seed alone and makes no copies, so one driven by a
+/// parameter can come to none: a circular pattern goes 3 -> 1 -> 3 and a rectangular one to 1 by
+/// 1, each still a valid pattern. A fraction or more than 500 is refused.
+#[test]
+fn a_pattern_quantity_of_one_or_less_makes_no_copies() {
+    for (value, count) in
+        [(3.0, Some(3)), (1.0, Some(1)), (0.0, Some(1)), (-4.0, Some(1)), (500.0, Some(500)), (2.5, None), (501.0, None), (f64::NAN, None)]
+    {
+        assert_eq!(SketchPattern::quantity(value).ok(), count, "{value}");
+    }
+    let mut sk = Sketch::new();
+    let center = sk.add_point(v(0.0, 0.0), None).unwrap();
+    let circle = sk.add_circle(v(20.0, 0.0), 2.0, None, None).unwrap();
+    let entities = vec![sk.curves[circle].id.clone()];
+    let kind = SketchPatternKind::Circular {
+        center: sk.points[center].id.clone(),
+        count: 3,
+        angle: 360.0,
+        alignment: PatternAlignment::Right,
+        reversed: false,
+    };
+    let id = sk.fresh("pat").unwrap();
+    sk.patterns.push(SketchPattern {
+        id: id.clone(),
+        entities: entities.clone(),
+        kind: kind.clone(),
+        count_expression: None,
+        instances: vec![],
+        expressions: Default::default(),
+    });
+    sk.update_pattern(0, kind).unwrap();
+    for (count, curves) in [(1, 1), (3, 3)] {
+        sk.resize_circular_pattern(&id, count).unwrap();
+        assert_eq!(sk.curves.len(), curves, "count {count}");
+        assert_eq!(sk.patterns[0].instances.len(), curves - 1);
+        sk.validate_patterns().unwrap();
+    }
+    let rect = SketchPatternKind::Rectangular {
+        dir: Vec2::new(1.0, 0.0),
+        dir2: None,
+        direction: None,
+        direction2: None,
+        count: 1,
+        spacing: 10.0,
+        count2: 1,
+        spacing2: 10.0,
+        alignment: PatternAlignment::Right,
+        alignment2: PatternAlignment::Right,
+        reversed: false,
+        reversed2: false,
+    };
+    let mut sk2 = Sketch::new();
+    let seed = sk2.add_circle(v(0.0, 0.0), 1.0, None, None).unwrap();
+    let rid = sk2.fresh("pat").unwrap();
+    let seeds = vec![sk2.curves[seed].id.clone()];
+    sk2.patterns.push(SketchPattern {
+        id: rid,
+        entities: seeds,
+        kind: rect.clone(),
+        count_expression: None,
+        instances: vec![],
+        expressions: Default::default(),
+    });
+    sk2.update_pattern(0, rect).unwrap();
+    assert_eq!(sk2.curves.len(), 1);
+    sk2.validate_patterns().unwrap();
+}
+
 /// Inserting a dense drawing searched the whole sketch for every new id, so the insert took time
 /// in proportion to the square of its size (about 40 s for 60000 lines). A batch searches no
 /// sketch for an id, and gives the points and curves exactly the ids, checks and refusals that

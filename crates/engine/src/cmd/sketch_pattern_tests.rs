@@ -714,18 +714,62 @@ fn circular_quantity_rejects_invalid_expressions_and_parameter_changes_atomicall
     let mut s = new_sketch();
     run(&mut s, "parameters.add", json!({"name":"holes","expression":"5","unit":""}));
     run(&mut s, "sketch.circle.center", json!({"center":[20,0],"radius":2,"id":"seed"}));
-    for expression in ["missing", "5 mm", "1", "0", "-3", "3.5", "501", "1e309"] {
+    for expression in ["missing", "5 mm", "3.5", "501", "1e309"] {
         let before = s.doc.to_json();
         assert!(s.execute("sketch.pattern.circular", &json!({"entities":["seed"],"center":"origin","count":expression})).is_err(), "{expression}");
         assert_eq!(s.doc.to_json(), before);
     }
     run(&mut s, "sketch.pattern.circular", json!({"entities":["seed"],"center":"origin","count":"holes + 1e-10"}));
-    for expression in ["1", "0", "-3", "3.5", "501", "5 mm", "1e309"] {
+    for expression in ["3.5", "501", "5 mm", "1e309"] {
         let before = s.doc.to_json();
         assert!(s.execute("parameters.change", &json!({"name":"holes","expression":expression})).is_err(), "{expression}");
         assert_eq!(s.doc.to_json(), before, "rejected {expression} leaves the document unchanged");
         assert_eq!(sketch(&s).curves.len(), 5);
     }
+}
+
+/// A Quantity of 1 or less keeps the seed alone and makes no copies, so a template can drive it
+/// with a parameter that comes to none: typed, as an expression, and through a parameter edit
+/// (3 -> 1 -> 0 -> -3 -> 3), for circular and rectangular patterns, with no error on the way.
+#[test]
+fn a_quantity_of_one_or_less_makes_no_copies_and_a_parameter_brings_them_back() {
+    let mut s = new_sketch();
+    run(&mut s, "parameters.add", json!({"name":"locks","expression":"3","unit":""}));
+    run(&mut s, "sketch.circle.center", json!({"center":[20,0],"radius":2,"id":"seed"}));
+    let out = run(&mut s, "sketch.pattern.circular", json!({"entities":["seed"],"center":"origin","count":"locks"}));
+    assert_eq!(sketch(&s).curves.len(), 3);
+    for (expression, curves) in [("1", 1), ("0", 1), ("-3", 1), ("3", 3)] {
+        run(&mut s, "parameters.change", json!({"name":"locks","expression":expression}));
+        let sk = sketch(&s);
+        assert_eq!(sk.curves.len(), curves, "locks = {expression}");
+        assert_eq!(sk.patterns[0].instances.len(), curves - 1, "locks = {expression}");
+        assert_eq!(sk.patterns[0].count_expression.as_deref(), Some("locks"));
+        sk.validate_patterns().unwrap();
+        check_relations(&s);
+    }
+    assert!(point(&sketch(&s), "seed.center").dist(Vec2::new(20.0, 0.0)) < 1e-6, "the seed stays where it is");
+    // Typed as a number: 1 makes no copies, and an edit back to 4 makes three.
+    for count in [json!(1), json!(0)] {
+        run(&mut s, "sketch.pattern.circular", json!({"pattern":out["pattern"],"count":count}));
+        assert_eq!(sketch(&s).curves.len(), 1, "count {count}");
+    }
+    run(&mut s, "sketch.pattern.circular", json!({"pattern":out["pattern"],"count":4}));
+    assert_eq!(sketch(&s).curves.len(), 4);
+
+    // Rectangular: each direction may be 1, alone or both.
+    let mut s = new_sketch();
+    run(&mut s, "parameters.add", json!({"name":"rows","expression":"2","unit":""}));
+    run(&mut s, "sketch.circle.center", json!({"center":[0,0],"radius":1,"id":"seed"}));
+    let rect = run(&mut s, "sketch.pattern.rectangular", json!({"entities":["seed"],"count":1,"spacing":10,"count2":"rows","spacing2":10}));
+    assert_eq!(sketch(&s).curves.len(), 2);
+    for (expression, curves) in [("1", 1), ("0", 1), ("3", 3)] {
+        run(&mut s, "parameters.change", json!({"name":"rows","expression":expression}));
+        assert_eq!(sketch(&s).curves.len(), curves, "rows = {expression}");
+        sketch(&s).validate_patterns().unwrap();
+    }
+    run(&mut s, "sketch.pattern.rectangular", json!({"pattern":rect["pattern"],"count":1,"count2":1}));
+    assert_eq!(sketch(&s).curves.len(), 1);
+    assert!(solidcraft_doc::format::read(&s.doc.to_json()).is_ok());
 }
 
 #[test]

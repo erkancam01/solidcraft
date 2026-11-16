@@ -5011,11 +5011,9 @@ impl Document {
                     _ => return Err(DocError::Invalid(format!("unknown sketch pattern input `{key}`"))),
                 };
                 let value = crate::eval::val(vals, expression, unit).map_err(|e| DocError::Expr(format!("pattern {} `{key}`: {e}", pattern.id)))?;
+                // 1 or less makes no copies in that direction (see `SketchPattern::quantity`).
                 let count = || -> Result<usize> {
-                    if !(1.0..=500.0).contains(&value) || value.fract() != 0.0 {
-                        return Err(DocError::Invalid(format!("pattern `{key}` must be a positive integer from 1 to 500")));
-                    }
-                    Ok(value as usize)
+                    solidcraft_sketch::SketchPattern::quantity(value).map_err(|e| DocError::Invalid(format!("pattern `{key}`: {e}")))
                 };
                 match (&mut kind, key.as_str()) {
                     (SketchPatternKind::Circular { count: n, .. } | SketchPatternKind::Rectangular { count: n, .. }, "count") => *n = count()?,

@@ -87,13 +87,20 @@ pub struct SketchPattern {
 }
 
 impl SketchPattern {
-    /// Resolve an evaluated circular Quantity with the dialog's whole-number tolerance.
-    pub fn circular_quantity(value: f64) -> Result<usize, SketchError> {
+    /// Resolve an evaluated Quantity with the dialog's whole-number tolerance. A Quantity of 1
+    /// or less keeps the seed alone and makes no copies, so one driven by a parameter can come to
+    /// none; a fraction or more than 500 is refused.
+    pub fn quantity(value: f64) -> Result<usize, SketchError> {
         let count = value.round();
-        if !value.is_finite() || !(1.0..=500.0).contains(&value) || count < 2.0 || (value - count).abs() > 1e-9 {
-            return Err(SketchError::Invalid("circular pattern Quantity must be a whole number from 2 to 500".into()));
+        if !value.is_finite() || count > 500.0 || (value - count).abs() > 1e-9 {
+            return Err(SketchError::Invalid("pattern Quantity must be a whole number up to 500 (1 or less makes no copies)".into()));
         }
-        Ok(count as usize)
+        Ok(count.max(1.0) as usize)
+    }
+
+    /// Resolve an evaluated circular Quantity, as [`Self::quantity`].
+    pub fn circular_quantity(value: f64) -> Result<usize, SketchError> {
+        Self::quantity(value)
     }
 
     pub fn contains(&self, entity: &str) -> bool {
@@ -111,8 +118,8 @@ impl SketchPattern {
 impl Sketch {
     /// Rebuild a circular Quantity while retaining surviving copy ids.
     pub fn resize_circular_pattern(&mut self, id: &str, count: usize) -> Result<(), SketchError> {
-        if !(2..=500).contains(&count) {
-            return Err(SketchError::Invalid("circular pattern Quantity must be 2…500".into()));
+        if !(1..=500).contains(&count) {
+            return Err(SketchError::Invalid("circular pattern Quantity must be 1…500".into()));
         }
         self.validate_patterns()?;
         let index = self.patterns.iter().position(|p| p.id == id).ok_or_else(|| SketchError::Invalid("missing sketch pattern".into()))?;

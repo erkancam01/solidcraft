@@ -986,7 +986,8 @@ pub struct PatternCircularParams {
     /// The axis to turn about. The coordinates of `{origin, dir}`'s origin may also be length
     /// expressions, which the pattern follows.
     pub axis: PatternAxis,
-    /// How many, the original included: a whole number or an expression that gives one.
+    /// How many, the original included: a whole number or an expression that gives one, at most
+    /// 1000. 1 or less (a parameter at 0, say) keeps the original alone and makes no copies.
     pub count: NumberExpr,
     /// The angle the copies span. Default: 360 deg; a partial arc includes both ends.
     #[serde(default)]

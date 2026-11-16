@@ -672,7 +672,7 @@ pub fn rows(ui: &mut egui::Ui, k: &mut Mod, doc: &Document) -> bool {
             pattern_hint(ui);
         }
         Mod::PatternCirc { count, angle, alignment: a, reversed } => {
-            enter |= quantity(ui, doc, "Quantity", count, 2, MAX_COPIES as i64);
+            enter |= quantity(ui, doc, "Quantity", count, 1, MAX_COPIES as i64);
             enter |= number(ui, "Total angle", angle);
             alignment(ui, "Alignment", a, reversed);
             pattern_hint(ui);
@@ -888,10 +888,11 @@ fn signed_length(app: &SolveApp, label: &str, text: &str, flip: bool) -> Result<
 /// Validate a typed count before sending its expression to the command.
 fn whole(app: &SolveApp, label: &str, text: &str) -> Result<u64, String> {
     let v = app.session.doc.eval(text.trim(), ValueKind::Unitless).map_err(|e| format!("{label}: {e}"))?;
-    if !v.is_finite() || !(1.0..=MAX_COPIES).contains(&v) || (v - v.round()).abs() > 1e-9 {
-        return Err(format!("{label} must be a whole number from 1 to {MAX_COPIES:.0}"));
+    // 1 or less makes no copies, as the pattern evaluates it (an expression may come to 0).
+    if !v.is_finite() || v.round() > MAX_COPIES || (v - v.round()).abs() > 1e-9 {
+        return Err(format!("{label} must be a whole number up to {MAX_COPIES:.0}"));
     }
-    Ok(v.round() as u64)
+    Ok(v.round().max(1.0) as u64)
 }
 
 /// Validate a typed offset instance count before sending it to the command.
@@ -1142,10 +1143,7 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
                 }
                 _ => json!(picked_point(&app.session, inputs, 1).ok_or("Select the centre the pattern turns around first")?),
             };
-            let n = whole(app, "Quantity", count)?;
-            if n < 2 {
-                return Err("Quantity must be at least 2".into());
-            }
+            whole(app, "Quantity", count)?;
             total_angle(app, "Total angle", angle)?;
             (
                 "sketch.pattern.circular",
