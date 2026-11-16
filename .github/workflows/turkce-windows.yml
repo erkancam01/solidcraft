@@ -1,0 +1,46 @@
+# Erkan'ın forku: Türkçe çevirili Windows taşınabilir (portable) derlemesi.
+# "turkce" dalına her push'ta ya da Actions > Turkce Windows > Run workflow ile çalışır.
+name: Turkce Windows
+
+on:
+  push:
+    branches: [turkce]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  windows:
+    name: Windows portable (Türkçe)
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: turkce-windows-x64
+      - name: Sürüm adı
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          "SOLIDCRAFT_VERSION=$v-tr+$($env:GITHUB_SHA.Substring(0,7))" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Derle ve paketle (portable zip)
+        shell: pwsh
+        run: ./packaging/windows/package.ps1 -Arch x64 -PortableOnly
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solidcraft-turkce-windows-portable
+          path: dist/release/*-portable.zip
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
