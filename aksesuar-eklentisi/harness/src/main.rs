@@ -17,6 +17,8 @@ struct Host {
     sent: Vec<(String, Value)>,
     folder: PathBuf,
     selection: Value,
+    /// The design's parameters, as `parameters.list` names them.
+    params: Vec<&'static str>,
     next_feature: u64,
     begins: usize,
     commits: usize,
@@ -25,13 +27,14 @@ struct Host {
 }
 
 impl Host {
-    fn new(manifest: &Manifest, folder: &Path, selection: Value) -> Self {
+    fn new(manifest: &Manifest, folder: &Path, selection: Value, params: Vec<&'static str>) -> Self {
         let commands = manifest.runtime.as_ref().map(|r| r.commands.iter().cloned().collect()).unwrap_or_default();
         Host {
             commands,
             sent: Vec::new(),
             folder: folder.to_path_buf(),
             selection,
+            params,
             next_feature: 100,
             begins: 0,
             commits: 0,
@@ -92,7 +95,7 @@ impl PluginHost for Host {
         self.sent.push((name.to_string(), args.clone()));
         let body = args.get("body").and_then(Value::as_str);
         Ok(match (name, body) {
-            ("parameters.list", _) => json!({"parameters": [{"name": "KOL"}]}),
+            ("parameters.list", _) => json!({"parameters": self.params.iter().map(|n| json!({"name": n})).collect::<Vec<_>>()}),
             ("selection.get", _) => self.selection.clone(),
             ("model.faces", Some("Kanat")) => kanat_faces(),
             ("model.faces", Some("Makas")) => makas_faces(),
@@ -161,7 +164,9 @@ fn run() -> Result<(), String> {
     let out = std::env::temp_dir().join(format!("aksesuar-harness-{}", std::process::id()));
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let entry = |selection: Value, name: &str, params: Value| {
-        let host = Host::new(&manifest, &out, selection);
+        // A design with KOL for seating parts; an empty one for the template.
+        let design_params = if name == "cift-acilim-sablonu" { Vec::new() } else { vec!["KOL"] };
+        let host = Host::new(&manifest, &out, selection, design_params);
         let (host, result) = craft_plugin_wasm::run(host, &manifest, &component, name, &params);
         println!(
             "{name} {params}: {} command(s), result {}",
