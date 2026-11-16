@@ -6,6 +6,12 @@
 //! parameter), else millimetres and degrees. A unit-less final result takes the expected unit
 //! (`2` for an inch parameter is 2 in). Trigonometric functions take an angle; a unit-less
 //! argument is read as degrees.
+//!
+//! Comparisons (`<`, `<=`, `>`, `>=`, `==`, `!=`) bind loosest and give 1 or 0; a condition is
+//! true when it is not 0. `if(FFH > 1200 mm, 2, 1)` picks a value, and `and`, `or` and `not`
+//! combine conditions. An argument that cannot change the result (the branch of `if` not taken,
+//! the rest of `and` once one is false) must still read correctly, but it is not evaluated for
+//! errors, so `if(n > 0, L / n, 0)` is 0 when `n` is 0.
 
 use std::collections::BTreeMap;
 
@@ -175,7 +181,27 @@ pub const FUNCTIONS: &[(&str, &str)] = &[
     ("pow", "pow(x, n)"),
     ("trunc", "trunc(x)"),
     ("mod", "mod(a, b)"),
+    ("if", "if(condition, a, b)"),
+    ("and", "and(a, b, …) → 1 or 0"),
+    ("or", "or(a, b, …) → 1 or 0"),
+    ("not", "not(a) → 1 or 0"),
 ];
+
+/// Comparison operators as the lexer stores them (one character each) and as they are written.
+const COMPARISONS: &[(char, &str)] = &[('<', "<"), ('≤', "<="), ('>', ">"), ('≥', ">="), ('=', "=="), ('≠', "!=")];
+
+/// Two values closer than this, relative to the larger (and at least absolutely, in mm or
+/// radians), are equal for `==`, `!=`, `<=` and `>=`: unit conversion leaves an ulp or two.
+const COMPARE_TOLERANCE: f64 = 1e-9;
+
+fn is_comparison(op: char) -> bool {
+    COMPARISONS.iter().any(|(c, _)| *c == op)
+}
+
+/// An operator as written: `<=` for the stored `≤`.
+fn op_text(op: char) -> String {
+    COMPARISONS.iter().find(|(c, _)| *c == op).map_or_else(|| op.to_string(), |(_, t)| t.to_string())
+}
 
 /// Constants an expression may use.
 pub const CONSTANTS: &[&str] = &["pi", "PI"];
@@ -473,6 +499,21 @@ fn lex_spans(s: &str) -> Result<Vec<(Tok, usize, usize)>, DocError> {
             // Some CAD tools separate function arguments with `;` in some locales.
             out.push((Tok::Op(','), at(i), at(i + 1)));
             i += 1;
+        } else if "<>=!≤≥≠".contains(c) {
+            // Comparisons: `<`, `<=`, `>`, `>=`, `==`, `!=` (or `≤`, `≥`, `≠`), stored as one
+            // character each. A single `=` is not one: it only marks a formula or a definition.
+            let eq_next = cs.get(i + 1).is_some_and(|(_, c)| *c == '=');
+            let (op, len) = match (c, eq_next) {
+                ('<', true) => ('≤', 2),
+                ('>', true) => ('≥', 2),
+                ('=', true) => ('=', 2),
+                ('!', true) => ('≠', 2),
+                ('=', false) => return Err(DocError::Expr("unexpected `=` (compare with `==`)".into())),
+                ('!', false) => return Err(DocError::Expr("unexpected `!` (write `!=` for not equal, or `not(…)`)".into())),
+                _ => (c, 1),
+            };
+            out.push((Tok::Op(op), at(i), at(i + len)));
+            i += len;
         } else if "+-*/^(),%".contains(c) {
             match c {
                 '(' => parens.push(matches!(out.last(), Some((Tok::Id(_), _, _)))),
@@ -506,7 +547,7 @@ fn leading_decimal_comma(cs: &[(usize, char)], i: usize, in_call: bool, prev: Op
         && cs.get(i + 1).is_some_and(|(_, c)| c.is_ascii_digit())
         && match prev {
             None => true,
-            Some((Tok::Op(op), _, _)) => "(+-*/^".contains(*op),
+            Some((Tok::Op(op), _, _)) => "(+-*/^".contains(*op) || is_comparison(*op),
             Some(_) => false,
         }
 }
@@ -676,6 +717,10 @@ struct Parser<'a> {
     lookup: &'a dyn Fn(&str) -> Result<Value, DocError>,
     depth: usize,
     defaults: Defaults,
+    /// Above 0 while reading an argument that cannot change the result (`if`'s other branch):
+    /// its evaluation errors are noted in `quiet_failed`, not returned; syntax errors still are.
+    quiet: usize,
+    quiet_failed: bool,
 }
 
 impl Parser<'_> {
@@ -691,15 +736,59 @@ impl Parser<'_> {
         self.depth += 1;
         if self.depth > MAX_DEPTH { Err(DocError::Expr("expression nested too deeply".into())) } else { Ok(()) }
     }
+    /// An evaluation result, or (while quiet) a placeholder 0 with the error noted.
+    fn soft(&mut self, r: Result<Value, DocError>) -> Result<Value, DocError> {
+        match r {
+            Err(_) if self.quiet > 0 => {
+                self.quiet_failed = true;
+                Ok(Value::num(0.0))
+            }
+            r => r,
+        }
+    }
+    /// An argument read quietly: its value, or None when evaluating it failed.
+    fn quietly(&mut self) -> Result<Option<Value>, DocError> {
+        let outer = std::mem::replace(&mut self.quiet_failed, false);
+        self.quiet += 1;
+        let r = self.expr();
+        self.quiet -= 1;
+        let failed = std::mem::replace(&mut self.quiet_failed, outer);
+        let v = r?;
+        Ok((!failed).then_some(v))
+    }
+    /// A comparison (loosest), or the sum alone.
     fn expr(&mut self) -> Result<Value, DocError> {
         self.enter()?;
+        let a = self.sum()?;
+        let out = match self.peek().cloned() {
+            Some(Tok::Op(op)) if is_comparison(op) => {
+                self.pos += 1;
+                let b = self.sum()?;
+                if let Some(Tok::Op(next)) = self.peek()
+                    && is_comparison(*next)
+                {
+                    return Err(DocError::Expr(format!(
+                        "comparisons cannot be chained (`{}` after `{}`): write `and(a < b, b < c)`",
+                        op_text(*next),
+                        op_text(op)
+                    )));
+                }
+                let r = compare(a, b, op, self.defaults);
+                self.soft(r)?
+            }
+            _ => a,
+        };
+        self.depth -= 1;
+        Ok(out)
+    }
+    fn sum(&mut self) -> Result<Value, DocError> {
         let mut a = self.term()?;
         while let Some(Tok::Op(c @ ('+' | '-'))) = self.peek().cloned() {
             self.pos += 1;
             let b = self.term()?;
-            a = add(a, b, c == '-', self.defaults)?;
+            let r = add(a, b, c == '-', self.defaults);
+            a = self.soft(r)?;
         }
-        self.depth -= 1;
         Ok(a)
     }
     fn term(&mut self) -> Result<Value, DocError> {
@@ -709,22 +798,26 @@ impl Parser<'_> {
                 Some(Tok::Op('*')) => {
                     self.pos += 1;
                     let b = self.unary()?;
-                    a = mul(a, b, false)?;
+                    let r = mul(a, b, false);
+                    a = self.soft(r)?;
                 }
                 Some(Tok::Op('/')) => {
                     self.pos += 1;
                     let b = self.unary()?;
-                    a = mul(a, b, true)?;
+                    let r = mul(a, b, true);
+                    a = self.soft(r)?;
                 }
                 Some(Tok::Op('%')) => {
                     self.pos += 1;
                     let b = self.unary()?;
-                    a = modulo(a, b, self.defaults)?;
+                    let r = modulo(a, b, self.defaults);
+                    a = self.soft(r)?;
                 }
                 // Juxtaposition: `10 mm`, `2 width`.
                 Some(Tok::Id(_) | Tok::Num(_)) | Some(Tok::Op('(')) => {
                     let b = self.unary()?;
-                    a = mul(a, b, false)?;
+                    let r = mul(a, b, false);
+                    a = self.soft(r)?;
                 }
                 _ => return Ok(a),
             }
@@ -771,11 +864,13 @@ impl Parser<'_> {
             {
                 let d = Value::num(*d);
                 self.pos += 2;
-                base = mul(base, d, true)?;
+                let r = mul(base, d, true);
+                base = self.soft(r)?;
             }
             if self.unit_at(self.pos) {
                 let u = self.power(false)?;
-                return mul(base, u, false);
+                let r = mul(base, u, false);
+                return self.soft(r);
             }
         }
         if let Some(Tok::Op('^')) = self.peek() {
@@ -784,7 +879,8 @@ impl Parser<'_> {
             // The exponent is a plain number: `2^3 mm` stays 8 mm.
             let e = self.signed(false)?;
             self.depth -= 1;
-            return pow(base, e);
+            let r = pow(base, e);
+            return self.soft(r);
         }
         Ok(base)
     }
@@ -817,6 +913,13 @@ impl Parser<'_> {
             Some(Tok::Id(id)) => {
                 if let Some(Tok::Op('(')) = self.peek() {
                     self.pos += 1;
+                    // An unknown name is a typo wherever it is, even in a branch not taken.
+                    if !FUNCTIONS.iter().any(|(f, _)| *f == id) {
+                        return Err(DocError::Expr(format!("unknown function `{id}`")));
+                    }
+                    if matches!(id.as_str(), "if" | "and" | "or") {
+                        return self.lazy_call(&id);
+                    }
                     let mut args = Vec::new();
                     if !matches!(self.peek(), Some(Tok::Op(')'))) {
                         loop {
@@ -833,7 +936,8 @@ impl Parser<'_> {
                     } else {
                         self.pos += 1;
                     }
-                    return call(&id, &args, self.defaults);
+                    let r = call(&id, &args, self.defaults);
+                    return self.soft(r);
                 }
                 match id.as_str() {
                     "pi" | "PI" => return Ok(Value::num(std::f64::consts::PI)),
@@ -842,12 +946,126 @@ impl Parser<'_> {
                 if let Some(u) = unit(&id) {
                     return Ok(u);
                 }
-                (self.lookup)(&id)
+                let r = (self.lookup)(&id);
+                self.soft(r)
             }
-            Some(Tok::Op(c)) => Err(DocError::Expr(format!("unexpected `{c}`"))),
+            Some(Tok::Op(c)) => Err(DocError::Expr(format!("unexpected `{}`", op_text(c)))),
             None => Err(DocError::Expr("unexpected end of expression".into())),
         }
     }
+    /// `if`, `and` and `or`, after their `(`. An argument that cannot change the result (the
+    /// branch not taken, what follows a deciding condition) is read quietly ([`Self::quietly`]).
+    fn lazy_call(&mut self, f: &str) -> Result<Value, DocError> {
+        let mut args: Vec<Option<Value>> = Vec::new();
+        // `if`: the condition; `and` / `or`: the result once an argument decides it.
+        let mut decided: Option<bool> = None;
+        if matches!(self.peek(), Some(Tok::Op(')'))) {
+            self.pos += 1;
+        } else {
+            loop {
+                if args.len() >= MAX_ARGS {
+                    return Err(DocError::Expr(format!("too many arguments to `{f}`")));
+                }
+                let needed = match (f, args.len()) {
+                    ("if", 0) => true,
+                    ("if", 1) => decided != Some(false),
+                    ("if", 2) => decided != Some(true),
+                    ("if", _) => true,
+                    _ => decided.is_none(),
+                };
+                let v = if needed { Some(self.expr()?) } else { self.quietly()? };
+                if let Some(v) = v
+                    && (f != "if" || args.is_empty())
+                {
+                    let t = match truth(f, v) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            self.soft(Err(e))?;
+                            false
+                        }
+                    };
+                    match f {
+                        "if" => decided = Some(t),
+                        "and" if needed && !t => decided = Some(false),
+                        "or" if needed && t => decided = Some(true),
+                        _ => {}
+                    }
+                }
+                args.push(v);
+                match self.next() {
+                    Some(Tok::Op(',')) => continue,
+                    Some(Tok::Op(')')) => break,
+                    _ => return Err(DocError::Expr(format!("missing `)` after the arguments of `{f}`"))),
+                }
+            }
+        }
+        if f != "if" {
+            if args.is_empty() {
+                return Err(DocError::Expr(format!("`{f}` needs arguments")));
+            }
+            let all = f == "and";
+            return Ok(Value::num(if decided.unwrap_or(all) { 1.0 } else { 0.0 }));
+        }
+        let [_, a, b] = args.as_slice() else {
+            return Err(DocError::Expr("`if` takes three arguments: `if(condition, a, b)`".into()));
+        };
+        let cond = decided.unwrap_or(false);
+        let r = match (a, b) {
+            (Some(a), Some(b)) => if_values(*a, *b, cond, self.defaults),
+            (Some(v), None) | (None, Some(v)) => Ok(*v),
+            // Both are quiet only inside another quiet argument: its result does not count.
+            (None, None) => Ok(Value::num(0.0)),
+        };
+        self.soft(r)
+    }
+}
+
+/// Whether a condition holds: a unit-less number other than 0.
+fn truth(f: &str, v: Value) -> Result<bool, DocError> {
+    if v.unitless() {
+        Ok(v.v != 0.0)
+    } else {
+        Err(DocError::Expr(format!("`{f}` needs a condition (a unit-less number such as `a > b`), not {}", v.describe())))
+    }
+}
+
+/// `a` or `b` as `if` picks it: both of one kind, a bare number taking the other's unit (as
+/// `min` and `max` do).
+fn if_values(a: Value, b: Value, cond: bool, d: Defaults) -> Result<Value, DocError> {
+    let mismatch = || DocError::Expr(format!("`if` needs two values of the same kind, not {} and {}", a.describe(), b.describe()));
+    let (x, y) = same_units(a, b, d).map_err(|_| mismatch())?;
+    if x.len != y.len || x.ang != y.ang {
+        return Err(mismatch());
+    }
+    Ok(if cond { x } else { y })
+}
+
+/// Two values in one unit: a bare number takes the other operand's unit (as in `a + b`).
+fn same_units(a: Value, b: Value, d: Defaults) -> Result<(Value, Value), DocError> {
+    let z = add(a, Value { v: 0.0, ..b }, false, d)?;
+    let w = add(b, Value { v: 0.0, ..a }, false, d)?;
+    Ok((z, w))
+}
+
+/// `a op b` for a comparison operator: 1 or 0. Both of one kind (a bare number takes the
+/// other's unit, as in `a + b`), compared in mm or radians with [`COMPARE_TOLERANCE`].
+fn compare(a: Value, b: Value, op: char, d: Defaults) -> Result<Value, DocError> {
+    if !(a.unitless() || b.unitless() || (a.len == b.len && a.ang == b.ang)) {
+        return Err(DocError::Expr(format!("cannot compare {} with {}", a.describe(), b.describe())));
+    }
+    let (len, ang) = if a.unitless() { (b.len, b.ang) } else { (a.len, a.ang) };
+    let (x, y) = (scale_bare(a, len, ang, d), scale_bare(b, len, ang, d));
+    let eq = (x - y).abs() <= COMPARE_TOLERANCE * x.abs().max(y.abs()).max(1.0);
+    let holds = match op {
+        '=' => eq,
+        '≠' => !eq,
+        '<' => !eq && x < y,
+        '≤' => eq || x < y,
+        '>' => !eq && x > y,
+        '≥' => eq || x > y,
+        _ => return Err(DocError::Expr(format!("unknown comparison `{}`", op_text(op)))),
+    };
+    Ok(Value::num(if holds { 1.0 } else { 0.0 }))
 }
 
 /// A unit-less number next to a dimensioned value, in that value's default unit.
@@ -943,12 +1161,7 @@ fn call(f: &str, args: &[Value], d: Defaults) -> Result<Value, DocError> {
         }
     };
     let num = |a: Value| if a.unitless() { Ok(a.v) } else { Err(DocError::Expr(format!("`{f}` needs a unit-less number, not {}", a.describe()))) };
-    let same = |a: Value, b: Value| -> Result<(Value, Value), DocError> {
-        // Bring a bare number to the other operand's unit (as in `a + b`).
-        let z = add(a, Value { v: 0.0, ..b }, false, d)?;
-        let w = add(b, Value { v: 0.0, ..a }, false, d)?;
-        Ok((z, w))
-    };
+    let same = |a: Value, b: Value| same_units(a, b, d);
     let unit_fn = |x: f64, a: Value| Value { v: x, ..a };
     Ok(match f {
         "sin" => Value::num(rad(one()?)?.sin()),
@@ -1062,6 +1275,7 @@ fn call(f: &str, args: &[Value], d: Defaults) -> Result<Value, DocError> {
             }
             acc
         }
+        "not" => Value::num(if truth(f, one()?)? { 0.0 } else { 1.0 }),
         _ => return Err(DocError::Expr(format!("unknown function `{f}`"))),
     })
 }
@@ -1098,7 +1312,7 @@ pub fn eval_with_defaults(s: &str, lookup: &dyn Fn(&str) -> Result<Value, DocErr
         }
         return Err(DocError::Expr("empty expression".into()));
     }
-    let mut p = Parser { toks, spans, pos: 0, lookup, depth: 0, defaults };
+    let mut p = Parser { toks, spans, pos: 0, lookup, depth: 0, defaults, quiet: 0, quiet_failed: false };
     let v = p.expr()?;
     if p.pos < p.toks.len() {
         return Err(DocError::Expr(format!("unexpected input in `{s}`")));
@@ -1778,6 +1992,227 @@ mod tests {
 
     /// `mod` of a value by a whole-number fraction of itself is 0 even when unit conversion leaves
     /// the quotient an ulp or two off: `3 in % 1 in` is 25.39999999999999 mm without that.
+    /// Evaluate with `FFH` (1500 mm), `n` (0) and `L` (100 mm) as parameters.
+    fn ev_if(s: &str, k: Kind) -> Result<f64, DocError> {
+        let look = |n: &str| match n {
+            "FFH" => Ok(Value::length(1500.0)),
+            "n" => Ok(Value::num(0.0)),
+            "L" => Ok(Value::length(100.0)),
+            "ang" => Ok(Value::angle(std::f64::consts::FRAC_PI_2)),
+            _ => Err(DocError::Expr(format!("unknown parameter `{n}`"))),
+        };
+        eval_with(s, &look)?.to_kind(k)
+    }
+
+    #[test]
+    fn comparisons_give_one_or_zero() {
+        let u = |e: &str| ev_if(e, Kind::Unitless);
+        for (e, want) in [
+            ("1 < 2", 1.0),
+            ("2 < 1", 0.0),
+            ("2 < 2", 0.0),
+            ("2 <= 2", 1.0),
+            ("3 > 2", 1.0),
+            ("2 >= 3", 0.0),
+            ("2 >= 2", 1.0),
+            ("2 == 2", 1.0),
+            ("2 != 2", 0.0),
+            ("2 != 3", 1.0),
+            ("2 ≤ 3", 1.0),
+            ("3 ≥ 4", 0.0),
+            ("3 ≠ 4", 1.0),
+            ("1<2", 1.0),
+            ("2>=2", 1.0),
+            ("=1 == 1", 1.0),
+            // Below `+` and `-`: `1 + 2 > 2` is `(1 + 2) > 2`.
+            ("1 + 2 > 2", 1.0),
+            ("1 > 2 - 2", 1.0),
+            ("2 * 3 == 6", 1.0),
+            ("(1 < 2) + (3 < 4)", 2.0),
+            ("-1 < 0", 1.0),
+            // A tolerance absorbs float noise: 0.1 + 0.2 is 0.3, 12 in is 1 ft.
+            ("0.1 + 0.2 == 0.3", 1.0),
+            ("0.1 + 0.2 <= 0.3", 1.0),
+            ("0.1 + 0.2 > 0.3", 0.0),
+            ("12 in == 1 ft", 1.0),
+            ("3 in / 1 in == 3", 1.0),
+            ("1 == 1.001", 0.0),
+        ] {
+            assert_eq!(u(e).unwrap(), want, "{e}");
+        }
+        // Chained comparisons are refused with the way to write them.
+        let e = u("1 < 2 < 3").unwrap_err().to_string();
+        assert!(e.contains("cannot be chained") && e.contains("and("), "{e}");
+        // A single `=` or `!` is not an operator.
+        for bad in ["1 = 1", "!1", "1 ! 2", "1 <", "< 1", "1 == == 1", "1 <> 2"] {
+            assert!(u(bad).is_err(), "{bad}");
+        }
+        assert!(u("1 = 1").unwrap_err().to_string().contains("unexpected `=`"));
+        assert!(u("< 1").unwrap_err().to_string().contains("unexpected `<`"));
+        assert!(u("<= 1").unwrap_err().to_string().contains("unexpected `<=`"));
+    }
+
+    #[test]
+    fn comparisons_follow_units() {
+        let u = |e: &str| ev_if(e, Kind::Unitless);
+        assert_eq!(u("FFH > 1200 mm").unwrap(), 1.0);
+        assert_eq!(u("FFH > 1.6 m").unwrap(), 0.0);
+        assert_eq!(u("FFH == 150 cm").unwrap(), 1.0);
+        assert_eq!(u("FFH >= 59 in").unwrap(), 1.0);
+        // A bare number next to a length is in the default length unit (mm here).
+        assert_eq!(u("FFH > 1200").unwrap(), 1.0);
+        assert_eq!(u("1200 < FFH").unwrap(), 1.0);
+        assert_eq!(u("FFH == 1500").unwrap(), 1.0);
+        // ... and in the parameter's unit when it has one (inches here).
+        let inch = Defaults::for_unit("in", 1.0);
+        let look = |n: &str| if n == "FFH" { Ok(Value::length(1500.0)) } else { Err(DocError::Expr("unknown".into())) };
+        assert_eq!(eval_with_defaults("FFH > 59", &look, inch).unwrap().v, 1.0);
+        assert_eq!(eval_with_defaults("FFH > 60", &look, inch).unwrap().v, 0.0);
+        // Angles compare in radians; a bare number is degrees.
+        assert_eq!(u("ang == 90 deg").unwrap(), 1.0);
+        assert_eq!(u("ang > 89").unwrap(), 1.0);
+        assert_eq!(u("ang < pi * 1 rad").unwrap(), 1.0);
+        // The result is unit-less.
+        assert_eq!(eval_with("FFH > 1200 mm", &look).unwrap().kind(), Some(Kind::Unitless));
+        // Values of different kinds are refused, saying which.
+        for (bad, words) in
+            [("FFH > 10 deg", ["a length", "an angle"]), ("ang == 1 mm", ["an angle", "a length"]), ("FFH * FFH > FFH", ["length^2", "a length"])]
+        {
+            let e = u(bad).unwrap_err().to_string();
+            assert!(e.contains("cannot compare") && words.iter().all(|w| e.contains(w)), "{bad}: {e}");
+        }
+        // Same powers compare: an area with an area.
+        assert_eq!(u("FFH * FFH > L * L").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn if_picks_a_value() {
+        assert_eq!(ev_if("if(FFH > 1200 mm, 2, 1)", Kind::Unitless).unwrap(), 2.0);
+        assert_eq!(ev_if("if(FFH > 1600 mm, 2, 1)", Kind::Unitless).unwrap(), 1.0);
+        assert_eq!(ev_if("if(1, 10 mm, 20 mm)", Kind::Length).unwrap(), 10.0);
+        assert_eq!(ev_if("if(0, 10 mm, 20 mm)", Kind::Length).unwrap(), 20.0);
+        // Lengths: a bare number takes the other branch's unit, as in `min` and `max`.
+        assert_eq!(ev_if("if(FFH > 1200, FFH / 2, 300)", Kind::Length).unwrap(), 750.0);
+        assert_eq!(ev_if("if(FFH < 1200, FFH / 2, 300)", Kind::Length).unwrap(), 300.0);
+        assert_eq!(ev_if("if(0, 1 in, 2)", Kind::Length).unwrap(), 2.0);
+        assert_eq!(ev_if("if(1, 2, 1 in)", Kind::Length).unwrap(), 2.0);
+        assert_eq!(ev_if("if(1, 1 in, 2)", Kind::Length).unwrap(), 25.4);
+        assert_eq!(eval_with("if(1, 2, 1 in)", &|_| Err(DocError::Expr("none".into()))).unwrap().kind(), Some(Kind::Length));
+        assert!((ev_if("if(ang > 45, ang, 30)", Kind::Angle).unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+        // Any non-zero number is true.
+        assert_eq!(ev_if("if(-0.5, 1, 2)", Kind::Unitless).unwrap(), 1.0);
+        assert_eq!(ev_if("if(FFH / L, 1, 2)", Kind::Unitless).unwrap(), 1.0);
+        // Nested.
+        for (e, want) in [
+            ("if(FFH > 2000 mm, 3, if(FFH > 1200 mm, 2, 1))", 2.0),
+            ("if(FFH > 1000 mm, if(FFH > 1400 mm, 4, 3), 1)", 4.0),
+            ("if(if(1, 0, 1), 5, 6)", 6.0),
+            ("1 + if(1 < 2, 1, 0) * 10", 11.0),
+            ("if (1 > 0; 7; 8)", 7.0),
+        ] {
+            assert_eq!(ev_if(e, Kind::Unitless).unwrap(), want, "{e}");
+        }
+        // The branch not taken is not evaluated for errors, but must still read correctly.
+        assert_eq!(ev_if("if(n > 0, L / n, 0)", Kind::Length).unwrap(), 0.0);
+        assert_eq!(ev_if("if(n == 0, 5 mm, L / n)", Kind::Length).unwrap(), 5.0);
+        assert_eq!(ev_if("if(1, 3, sqrt(-1) + nope)", Kind::Unitless).unwrap(), 3.0);
+        assert_eq!(ev_if("if(1, 3, if(1, 1 mm / 0, 2))", Kind::Unitless).unwrap(), 3.0);
+        assert!(ev_if("if(n == 0, L / n, 5 mm)", Kind::Length).unwrap_err().to_string().contains("division by zero"));
+        assert!(ev_if("if(1, 3, 2 +)", Kind::Unitless).is_err(), "a syntax error in the other branch");
+        assert!(ev_if("if(1, 3, (2)", Kind::Unitless).is_err());
+        assert!(ev_if("if(1, 3, sqr(2))", Kind::Unitless).unwrap_err().to_string().contains("unknown function `sqr`"));
+        // Mismatched kinds are refused, even when the branch is not taken.
+        for bad in ["if(1, 10 mm, 5 deg)", "if(0, 10 mm, 5 deg)", "if(1, L, ang)"] {
+            let e = ev_if(bad, Kind::Length).unwrap_err().to_string();
+            assert!(e.contains("same kind") && e.contains("a length") && e.contains("an angle"), "{bad}: {e}");
+        }
+        // The condition is unit-less.
+        let e = ev_if("if(L, 1, 2)", Kind::Unitless).unwrap_err().to_string();
+        assert!(e.contains("condition") && e.contains("a length"), "{e}");
+        // Three arguments, no more, no fewer.
+        for bad in ["if()", "if(1)", "if(1, 2)", "if(1, 2, 3, 4)", "if(1, 2, 3"] {
+            assert!(ev_if(bad, Kind::Unitless).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn and_or_not() {
+        let u = |e: &str| ev_if(e, Kind::Unitless);
+        for (e, want) in [
+            ("and(1, 1)", 1.0),
+            ("and(1, 0)", 0.0),
+            ("and(1, 2, 3)", 1.0),
+            ("and(1 < 2, 3 > 2, FFH > 1 m)", 1.0),
+            ("or(0, 0)", 0.0),
+            ("or(0, 0, 5)", 1.0),
+            ("or(FFH < 1 m, L == 100 mm)", 1.0),
+            ("not(0)", 1.0),
+            ("not(3)", 0.0),
+            ("not(FFH > 1200 mm)", 0.0),
+            ("and(1)", 1.0),
+            ("or(0)", 0.0),
+            ("if(and(FFH > 1 m, not(n)), 2, 1)", 2.0),
+            ("or(and(0, 1), not(and(1, 0)))", 1.0),
+            // Once decided, the rest is not evaluated for errors.
+            ("and(n > 0, L / n > 5 mm)", 0.0),
+            ("or(n == 0, L / n > 5 mm)", 1.0),
+        ] {
+            assert_eq!(u(e).unwrap(), want, "{e}");
+        }
+        assert!(u("and(n == 0, L / n > 5 mm)").is_err());
+        for bad in ["and()", "or()", "not()", "not(1, 2)", "and(L, 1)", "or(0, 5 deg)", "not(L)", "and(0, L)"] {
+            assert!(u(bad).is_err(), "{bad}");
+        }
+        assert!(u("not(L)").unwrap_err().to_string().contains("a length"));
+    }
+
+    #[test]
+    fn if_and_or_not_are_reserved() {
+        for name in ["if", "and", "or", "not"] {
+            assert_eq!(reserved_kind(name), Some("function"), "{name}");
+            assert!(is_reserved(name));
+            assert!(FUNCTIONS.iter().any(|(f, sig)| *f == name && sig.starts_with(&format!("{name}("))), "{name}");
+        }
+        // Only the exact words: a parameter may still be called `iff`, `android` or `Not`.
+        for name in ["iff", "android", "order", "Not", "IF"] {
+            assert!(!is_reserved(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn references_and_renames_reach_into_if() {
+        let e = "if(and(FFH > 1200 mm, not(open)), w / 2, max(w, 5 mm))";
+        assert_eq!(references(e), vec!["FFH", "open", "w"]);
+        assert_eq!(rename_reference(e, "w", "width"), "if(and(FFH > 1200 mm, not(open)), width / 2, max(width, 5 mm))");
+        assert_eq!(rename_reference(e, "FFH", "sash_h"), "if(and(sash_h > 1200 mm, not(open)), w / 2, max(w, 5 mm))");
+        assert_eq!(rename_reference("a>=b", "b", "c"), "a>=c");
+        assert_eq!(rename_reference("a!=b", "a", "x"), "x!=b");
+        // A comparison is no literal; a definition of one is still a definition.
+        assert!(!is_literal("1 < 2"));
+        assert!(!is_literal("if(1, 2, 3)"));
+        assert_eq!(definition("x = a > b"), Some(("x", "a > b")));
+        assert_eq!(definition("x = a == b"), Some(("x", "a == b")));
+        assert_eq!(definition("a == b"), None);
+        assert_eq!(definition("a >= b"), None);
+        assert_eq!(definition("a <= b"), None);
+        assert_eq!(definition("a != b"), None);
+        assert_eq!(ev_if("x = FFH >= 1500", Kind::Unitless).unwrap(), 1.0);
+        // Parameters evaluate through `if`, in dependency order.
+        let (vals, errs) = eval_params(
+            &[
+                def("FFH", "1500", "mm"),
+                def("count", "if(FFH > 1200 mm, 2, 1)", ""),
+                def("gap", "if(count == 2, FFH / count, 10)", "mm"),
+                def("half", "if(gap < 1 m, gap, 0) / 2", "mm"),
+            ],
+            1.0,
+        );
+        assert!(errs.is_empty(), "{errs:?}");
+        assert_eq!(vals.get("count").map(|v| v.v), Some(2.0));
+        assert_eq!(vals.get("gap").map(|v| v.v), Some(750.0));
+        assert_eq!(vals.get("half").map(|v| v.v), Some(375.0));
+    }
+
     #[test]
     fn mod_ignores_float_noise_in_the_quotient() {
         let look = |_: &str| Err(DocError::Expr("no parameters".into()));
