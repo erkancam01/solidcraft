@@ -1,0 +1,47 @@
+# The Aksesuar plugin: a WebAssembly component for SolidCraft's `commands@0.1` plugin host.
+# A standalone project, not a member of SolidCraft's workspace (its own `[workspace]` table).
+# Native `cargo test` runs the plugin logic against a scripted host; the component itself is
+# built for wasm32-unknown-unknown and wrapped with `wasm-tools component new` (see
+# .github/workflows/aksesuar-eklentisi.yml).
+[workspace]
+exclude = ["harness"]
+
+[package]
+name = "aksesuar"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+description = "Window-hardware helpers for SolidCraft: place a part in a sash groove, tie-bar cut list, tilt-and-turn template"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Type-checks the WIT glue on the native target (`cargo check --features wit-kontrol`).
+wit-kontrol = []
+
+[dependencies]
+serde_json = "1"
+wit-bindgen = "0.57"
+
+[dev-dependencies]
+# The host's own manifest parser: the shipped plugin.json must pass it.
+craft-plugin = { path = "../crates/craft-plugin" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"

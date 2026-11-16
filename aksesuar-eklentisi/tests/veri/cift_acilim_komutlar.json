@@ -1,0 +1,837 @@
+[
+  {
+    "command": "parameters.list",
+    "params": {}
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "1200 mm",
+      "name": "FFH"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "900 mm",
+      "name": "FFB"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "600 mm",
+      "name": "KOL"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "120 mm",
+      "name": "KA"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "300 mm",
+      "name": "IS"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "150 mm",
+      "name": "AM"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "180 mm",
+      "name": "MKR"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "1 mm",
+      "name": "PAY"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "220 mm + 200 mm * min(max(ceil((FFB - 650 mm) / (1 mm)), 0), 1) + 230 mm * min(max(ceil((FFB - 1000 mm) / (1 mm)), 0), 1)",
+      "name": "MK"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "KOL - IS/2 - KA - 2*PAY",
+      "name": "TIJ_SOL_ALT"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "FFH - KA - KOL - IS/2 - 2*PAY",
+      "name": "TIJ_SOL_UST"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "FFB - KA - MK - 2*PAY",
+      "name": "TIJ_UST"
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "expression": "FFB - KA - AM - 2*PAY",
+      "name": "TIJ_ALT"
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "Kanat sol",
+      "center": [
+        "31 mm",
+        "FFH/2",
+        "-35 mm"
+      ],
+      "height": "70 mm",
+      "length": "62 mm",
+      "name": "Kanat sol",
+      "operation": "new",
+      "width": "FFH"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "Kanat sol"
+      ],
+      "color": [
+        205,
+        211,
+        218
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "Kanat sag",
+      "center": [
+        "FFB - 31 mm",
+        "FFH/2",
+        "-35 mm"
+      ],
+      "height": "70 mm",
+      "length": "62 mm",
+      "name": "Kanat sag",
+      "operation": "new",
+      "width": "FFH"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "Kanat sag"
+      ],
+      "color": [
+        205,
+        211,
+        218
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "Kanat ust",
+      "center": [
+        "FFB/2",
+        "FFH - 31 mm",
+        "-35 mm"
+      ],
+      "height": "70 mm",
+      "length": "FFB - 124 mm",
+      "name": "Kanat ust",
+      "operation": "new",
+      "width": "62 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "Kanat ust"
+      ],
+      "color": [
+        205,
+        211,
+        218
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "Kanat alt",
+      "center": [
+        "FFB/2",
+        "31 mm",
+        "-35 mm"
+      ],
+      "height": "70 mm",
+      "length": "FFB - 124 mm",
+      "name": "Kanat alt",
+      "operation": "new",
+      "width": "62 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "Kanat alt"
+      ],
+      "color": [
+        205,
+        211,
+        218
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "Cam",
+      "center": [
+        "FFB/2",
+        "FFH/2",
+        "-35 mm"
+      ],
+      "height": "6 mm",
+      "length": "FFB - 124 mm",
+      "name": "Cam",
+      "operation": "new",
+      "width": "FFH - 124 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "Cam"
+      ],
+      "color": [
+        159,
+        200,
+        232
+      ],
+      "opacity": 0.3
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "KA-02 dikey",
+      "center": [
+        "-7.5 mm",
+        "KA/2 - 7.5 mm",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "15 mm",
+      "name": "KA-02 dikey",
+      "operation": "new",
+      "width": "KA + 15 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "KA-02 dikey"
+      ],
+      "color": [
+        79,
+        86,
+        99
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "KA-02 yatay",
+      "center": [
+        "KA/2",
+        "-7.5 mm",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "KA",
+      "name": "KA-02 yatay",
+      "operation": "new",
+      "width": "15 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "KA-02 yatay"
+      ],
+      "color": [
+        79,
+        86,
+        99
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "KA-01 dikey",
+      "center": [
+        "-7.5 mm",
+        "FFH - KA/2 + 7.5 mm",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "15 mm",
+      "name": "KA-01 dikey",
+      "operation": "new",
+      "width": "KA + 15 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "KA-01 dikey"
+      ],
+      "color": [
+        79,
+        86,
+        99
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "KA-01 yatay",
+      "center": [
+        "KA/2",
+        "FFH + 7.5 mm",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "KA",
+      "name": "KA-01 yatay",
+      "operation": "new",
+      "width": "15 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "KA-01 yatay"
+      ],
+      "color": [
+        79,
+        86,
+        99
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "IS-300 ispanyolet",
+      "center": [
+        "-7.5 mm",
+        "KOL",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "15 mm",
+      "name": "IS-300 ispanyolet",
+      "operation": "new",
+      "width": "IS"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "IS-300 ispanyolet"
+      ],
+      "color": [
+        175,
+        182,
+        194
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "KOL rozet",
+      "center": [
+        "31 mm",
+        "KOL",
+        "7 mm"
+      ],
+      "height": "14 mm",
+      "length": "32 mm",
+      "name": "KOL rozet",
+      "operation": "new",
+      "width": "76 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "KOL rozet"
+      ],
+      "color": [
+        240,
+        240,
+        240
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "KOL tutamak",
+      "center": [
+        "31 mm",
+        "KOL - 62 mm",
+        "22 mm"
+      ],
+      "height": "16 mm",
+      "length": "20 mm",
+      "name": "KOL tutamak",
+      "operation": "new",
+      "width": "150 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "KOL tutamak"
+      ],
+      "color": [
+        240,
+        240,
+        240
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "Makas ust",
+      "center": [
+        "FFB - MK/2 + 7.5 mm",
+        "FFH + 7.5 mm",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "MK + 15 mm",
+      "name": "Makas ust",
+      "operation": "new",
+      "width": "15 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "Makas ust"
+      ],
+      "color": [
+        109,
+        76,
+        142
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "Makas sag",
+      "center": [
+        "FFB + 7.5 mm",
+        "FFH - MKR/2",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "15 mm",
+      "name": "Makas sag",
+      "operation": "new",
+      "width": "MKR"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "Makas sag"
+      ],
+      "color": [
+        109,
+        76,
+        142
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "AM alt",
+      "center": [
+        "FFB - AM/2 + 7.5 mm",
+        "-7.5 mm",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "AM + 15 mm",
+      "name": "AM alt",
+      "operation": "new",
+      "width": "15 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "AM alt"
+      ],
+      "color": [
+        109,
+        76,
+        142
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "AM sag",
+      "center": [
+        "FFB + 7.5 mm",
+        "AM/2",
+        "-35 mm"
+      ],
+      "height": "22 mm",
+      "length": "15 mm",
+      "name": "AM sag",
+      "operation": "new",
+      "width": "AM"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "AM sag"
+      ],
+      "color": [
+        109,
+        76,
+        142
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "TIJ sol alt",
+      "center": [
+        "-5 mm",
+        "(KA + KOL - IS/2)/2",
+        "-35 mm"
+      ],
+      "height": "10 mm",
+      "length": "7 mm",
+      "name": "TIJ sol alt",
+      "operation": "new",
+      "width": "TIJ_SOL_ALT"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "TIJ sol alt"
+      ],
+      "color": [
+        214,
+        39,
+        40
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "TIJ sol ust",
+      "center": [
+        "-5 mm",
+        "(KOL + IS/2 + FFH - KA)/2",
+        "-35 mm"
+      ],
+      "height": "10 mm",
+      "length": "7 mm",
+      "name": "TIJ sol ust",
+      "operation": "new",
+      "width": "TIJ_SOL_UST"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "TIJ sol ust"
+      ],
+      "color": [
+        214,
+        39,
+        40
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "TIJ ust",
+      "center": [
+        "(KA + FFB - MK)/2",
+        "FFH + 5 mm",
+        "-35 mm"
+      ],
+      "height": "10 mm",
+      "length": "TIJ_UST",
+      "name": "TIJ ust",
+      "operation": "new",
+      "width": "7 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "TIJ ust"
+      ],
+      "color": [
+        214,
+        39,
+        40
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "TIJ alt",
+      "center": [
+        "(KA + FFB - AM)/2",
+        "-5 mm",
+        "-35 mm"
+      ],
+      "height": "10 mm",
+      "length": "TIJ_ALT",
+      "name": "TIJ alt",
+      "operation": "new",
+      "width": "7 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "TIJ alt"
+      ],
+      "color": [
+        214,
+        39,
+        40
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "EK KILIT 1",
+      "center": [
+        "-7.5 mm",
+        "(KOL + IS/2 + FFH - KA)/2",
+        "-35 mm"
+      ],
+      "height": "24 mm",
+      "length": "16 mm",
+      "name": "EK KILIT 1",
+      "operation": "new",
+      "width": "60 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "EK KILIT 1"
+      ],
+      "color": [
+        230,
+        126,
+        34
+      ]
+    }
+  },
+  {
+    "command": "solid.box",
+    "params": {
+      "body_name": "COCUK KILIDI",
+      "center": [
+        "31 mm",
+        "KOL + 58 mm",
+        "7 mm"
+      ],
+      "height": "14 mm",
+      "length": "32 mm",
+      "name": "COCUK KILIDI",
+      "operation": "new",
+      "width": "30 mm"
+    }
+  },
+  {
+    "command": "appearance.assign",
+    "params": {
+      "bodies": [
+        "COCUK KILIDI"
+      ],
+      "color": [
+        46,
+        204,
+        113
+      ]
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "comment": "Çocuk kilidi: 1 var, 0 yok",
+      "expression": "0",
+      "name": "CK",
+      "unit": ""
+    }
+  },
+  {
+    "command": "config.configure",
+    "params": {
+      "features": [
+        "EK KILIT 1",
+        "COCUK KILIDI"
+      ],
+      "params": [
+        "FFH",
+        "FFB",
+        "KOL",
+        "CK"
+      ]
+    }
+  },
+  {
+    "command": "config.rule",
+    "params": {
+      "rules": [
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "le",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 120,
+            "type": "drive_suppression",
+            "value": true
+          },
+          "enabled": true,
+          "id": "ek-kilit-kapali",
+          "name": "Ek kilit: FFH 1200 mm ve altında yok"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "gt",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 120,
+            "type": "drive_suppression",
+            "value": false
+          },
+          "enabled": true,
+          "id": "ek-kilit-acik",
+          "name": "Ek kilit: FFH 1200 mm üstünde var"
+        },
+        {
+          "condition": {
+            "expression": "0",
+            "operator": "eq",
+            "parameter": "CK",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 121,
+            "type": "drive_suppression",
+            "value": true
+          },
+          "enabled": true,
+          "id": "cocuk-kilidi-kapali",
+          "name": "Çocuk kilidi: CK = 0 ise yok"
+        },
+        {
+          "condition": {
+            "expression": "0",
+            "operator": "ne",
+            "parameter": "CK",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 121,
+            "type": "drive_suppression",
+            "value": false
+          },
+          "enabled": true,
+          "id": "cocuk-kilidi-acik",
+          "name": "Çocuk kilidi: CK = 1 ise var"
+        }
+      ]
+    }
+  },
+  {
+    "command": "config.activate",
+    "params": {
+      "row": "Default"
+    }
+  }
+]
