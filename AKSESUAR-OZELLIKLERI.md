@@ -8,7 +8,7 @@ nerede olduğu, nasıl kullanıldığı ve nereden indirileceği.
 | 1 | Türkçe arayüz (SolidWorks terimleriyle) | Çeviri | `turkce` | Hazır |
 | 2 | İfadelerde `if()`, karşılaştırmalar, `and`/`or`/`not` (A1) | Motor | `a1-ifade` | Hazır |
 | 3 | Çoğaltma adetlerinin parametreyle sürülmesi (A3) | Motor | `a3-cogaltma` | Geliştiriliyor |
-| 4 | Aksesuar eklentisi (4 komut) | Eklenti | `aksesuar-eklentisi` | Hazır, uygulamada denenmedi |
+| 4 | Aksesuar eklentisi (4 komut) | Eklenti | `aksesuar-eklentisi` | 0.1.1 uygulamada denendi (Kanala Yerleştir hariç) |
 | 5 | Koşullu bastırma: konfigürasyon kuralları | SolidCraft'ta yerleşik | — | Hazır |
 
 Eski A2 (bastırma) ve A4 (kanal) dalları bırakıldı; işleri eklentiye ve yerleşik kurallara taşındı.
@@ -160,7 +160,7 @@ Ayrıntı: `docs/configurations.md`, "Ordered rules and preview".
 
 ## 6. Eklentiyi kurmak
 
-1. Eklenti zip'ini indirin (7. bölüm) ve indirilen `aksesuar-eklentisi.zip` artifact'ını açın:
+1. Eklenti zip'ini indirin (8. bölüm) ya da bilgisayarda derleyin (7. bölüm) ve indirilen `aksesuar-eklentisi.zip` artifact'ını açın:
    içindeki **`aksesuar-eklentisi.zip`** kurulacak dosyadır (içinde `plugin.json` ve
    `aksesuar.wasm` var).
 2. SolidCraft'ta **Tercihler > Eklentiler > Eklenti yükle…** (ya da **Eklentiler** menüsü >
@@ -173,7 +173,38 @@ Güncellerken aynı yolla yeni zip'i yükleyin (eskisinin yerine geçer; klasör
 Kaldırmak: Tercihler > Eklentiler > Aksesuar > **Kaldır**. Eklenti yalnızca masaüstü sürümde
 çalışır (web sürümünde çalışmaz).
 
-## 7. İndirme yerleri
+## 7. Bilgisayarda derleme ve deneme
+
+Kaynak `C:\Users\PC\Desktop\aksesuar\solidcraft` klasöründe (forkun klonu). Gereken araçlar
+kurulu: Git, Rust 1.99.1 (`wasm32-unknown-unknown` hedefiyle), Visual Studio 18 (MSVC),
+`wasm-tools`, Node.
+
+Eklentiyi derlemek (`aksesuar-eklentisi` dalında, `aksesuar-eklentisi/` klasöründe):
+
+```text
+cargo test --locked
+cargo build --locked --release --target wasm32-unknown-unknown
+wasm-tools component new target/wasm32-unknown-unknown/release/aksesuar.wasm -o dist/aksesuar/aksesuar.wasm
+copy plugin.json dist\aksesuar\
+```
+
+`dist\aksesuar` içindeki `plugin.json` ve `aksesuar.wasm` zip'lenip kurulur.
+
+Uygulamasız deneme: `solidcraft-cli.exe` eklentiyi doğrudan çalıştırabilir (`plugin.inspect` ile
+onay özeti alınır, `plugin.run` ile çalışır, `snapshot` ile görüntü alınır). Dosya yazan komut
+(Tij listesi) CLI'da izin alamaz; onu uygulamada ya da uygulamanın kontrol kanalından çalıştırın.
+
+### 0.1.1 deneme sonucu (16.11.2026)
+
+Türkçe SolidCraft 0.43 üzerinde, FFH 1500 / FFB 900 / KOL 600:
+
+- Şablon hatasız kuruldu; model **dik** duruyor (önden ve izometrik görüntüyle bakıldı).
+- Ek kilit var; sol alt tij **123 + 123 mm** iki parçaya bölündü, tek parça bastırıldı.
+- CSV doğru: 5 tij, toplam 1860 mm; bastırılan `TIJ sol alt` listede yok.
+- FFH 1100'e düşürülünce kurallar geri döndü: ek kilit ve iki parça bastırıldı, `TIJ sol alt`
+  (328 mm) geldi; CSV 4 tij, toplam 1542 mm.
+
+## 8. İndirme yerleri
 
 GitHub: `erkancam01/solidcraft` > **Actions**.
 
@@ -185,12 +216,10 @@ GitHub: `erkancam01/solidcraft` > **Actions**.
 Çalışmanın sayfasının en altında **Artifacts** bölümünden indirilir (GitHub'a giriş gerekir;
 30 gün saklanır).
 
-## 8. Bilinen sınırlar
+## 9. Bilinen sınırlar
 
-- Eklenti bu ortamda yalnızca birim testleri ve SolidCraft'ın eklenti çalışma ortamında (motor
-  yerine sahte yanıtlarla) denendi; gerçek bir tasarımda uygulama içinde henüz denenmedi.
-  İlk kullanımda sonucu gözle kontrol edin; parça ters ya da yanlış eksende durursa
-  **180° çevir**'i deneyin ve durumu bildirin.
+- Kanala Yerleştir gerçek bir STEP parçasıyla henüz denenmedi. İlk kullanımda sonucu gözle
+  kontrol edin; parça ters ya da yanlış eksende durursa **180° çevir**'i deneyin ve bildirin.
 - Kanala Yerleştir, kanal tabanının köşesinde iki kenarın dik kesiştiğini (dikdörtgen taban)
   varsayar. Yan konum (kanal ortası) yerleştirme anındaki taban genişliğinden alınır.
 - Tij listesi bileşen yerleşimlerini ayrı saymaz: her gövde bir kez sayılır (bileşen listesi
