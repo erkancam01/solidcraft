@@ -8,7 +8,7 @@ nerede olduğu, nasıl kullanıldığı ve nereden indirileceği.
 | 1 | Türkçe arayüz (SolidWorks terimleriyle) | Çeviri | `turkce` | Hazır |
 | 2 | İfadelerde `if()`, karşılaştırmalar, `and`/`or`/`not` (A1) | Motor | `a1-ifade` | Hazır |
 | 3 | Çoğaltma adetlerinin parametreyle sürülmesi (A3) | Motor | `a3-cogaltma` | Geliştiriliyor |
-| 4 | Aksesuar eklentisi (6 komut) | Eklenti | `aksesuar-yerlesim` (0.1.2'ye kadar `aksesuar-eklentisi`) | 0.1.4; altı komut da uygulamada denendi |
+| 4 | Aksesuar eklentisi (6 komut) | Eklenti | `aksesuar-yerlesim` (0.1.2'ye kadar `aksesuar-eklentisi`) | 0.1.5; altı komut da uygulamada denendi (0.1.4) |
 | 5 | Koşullu bastırma: konfigürasyon kuralları | SolidCraft'ta yerleşik | — | Hazır |
 | 6 | Kolay montaj (SolidWorks gibi) | Motor + arayüz | `montaj-kolay` | Uygulamada denendi |
 | 7 | Aksesuar Kütüphanesi + yerleşim noktaları + tıkla-yerleştir | Motor + arayüz | `aksesuar-yerlesim` | Hazır — uygulamada denendi |
@@ -56,7 +56,7 @@ karşılıklarının sayısını FFH'ye bağlamak. **Henüz geliştiriliyor**, h
 
 ## 4. Aksesuar eklentisi (`aksesuar-eklentisi`)
 
-Kaynak: `aksesuar-eklentisi/` (bağımsız Rust projesi, WebAssembly bileşeni). Sürüm **0.1.4**,
+Kaynak: `aksesuar-eklentisi/` (bağımsız Rust projesi, WebAssembly bileşeni). Sürüm **0.1.5**,
 6 komut. En yeni hâli `aksesuar-yerlesim` dalında; `aksesuar-eklentisi` dalı 0.1.2'de kaldı.
 0.1.3 ve sonrası SolidCraft'ın yeni yerleşim noktası komutlarını (`hardware.slot.*`) kullanır:
 `aksesuar-yerlesim` dalından derlenmiş SolidCraft ile kullanın.
@@ -339,7 +339,8 @@ listelenir.
   görünümde eksen üçlüsüyle gösterilir. **Kaydet** tek geri alma adımıdır; İptal ve Esc hiçbir şey
   değiştirmez.
 - **Noktayı düzenle**: aynı kart. Yüz ve kenarı yeniden seçmezseniz noktanın yeri değişmez.
-- **Noktayı sil**.
+  Noktada parça varsa parça da aynı adımda yeni yere taşınır.
+- **Noktayı sil**: noktada parça varsa parça da kaldırılır (önce onay sorulur).
 - Kütüphane açıkken her nokta 3B görünümde bir işaretle çizilir (koşulu tutmuyorsa soluk); üstüne
   gelince adı görünür.
 
@@ -438,6 +439,28 @@ Eklenti 0.1.4 ile FFH değiştirilince görünen kilitler:
 
 Testler: motor hardware testleri **21/21**, eklenti testleri **56/56**.
 
+### 7.9 0.1.5 / inceleme düzeltmeleri (17.11.2026)
+
+- **Kare olmayan (gönyeli) köşeler**: yerleşim noktası seçilen kenar boyunca hesaplanır. Kare
+  köşede sonuç eskisiyle aynı.
+- **Dolu noktayı düzenlemek** (`hardware.slot.edit`) parçayı aynı adımda yeni yere taşır; **dolu
+  noktayı silmek** (`hardware.slot.delete`) parçayı da kaldırır (arayüzde onay sorulur). Tek geri
+  alma adımı ikisini birlikte geri getirir.
+- Bastırılmış ya da kurallı bir bileşen yeni yerleşimde kopya olarak **yeniden kullanılmaz**.
+- Parça kartının başındaki UTF-8 BOM (Not Defteri'nin eklediği işaret) artık sorun çıkarmaz.
+- Bağlantı noktası ya da nokta modu açıkken belge değiştiren komutlar, kaydetme, sekme
+  değiştirme/kapatma ve çıkış önce modu bitirir; otomatik kurtarma geçici parçayı yazmaz.
+- Canlı sürükleme sırasında kütüphane paneli nokta listesini yeniden hesaplamaz.
+- Hayalet önizleme arka planda üretilir; yerleştirme modu açıkken hızlı ilişki, döndürme ve
+  sürükleme kapalı.
+- **Eklenti 0.1.5**: uzun nokta adlarında kural ve parametre adları kısaltılır, özetle (hash)
+  benzersiz kalır. Eklentinin kuralları **"Koşullu parça: …"** adıyla tanınır; kullanıcının kendi
+  `kosul-` kuralları korunur.
+- Aynı günün önceki düzeltmeleri: koşulu tutmayan noktaya da yerleştirilir (parça hemen
+  bastırılır); yerleştirme kartı parçayı izler; önizleme daha belirgin.
+
+Testler: motor hardware **26/26**, ui-egui **159/159**, eklenti **58/58**.
+
 ## 8. Eklentiyi kurmak
 
 1. Eklenti zip'ini indirin (10. bölüm) ya da bilgisayarda derleyin (9. bölüm). İndirilen
@@ -514,7 +537,7 @@ yüzü dikey kolun iç yüzü, kenar Kanat sağ'ın dış dikey kenarı, sondan 
 - Şablonun kendi KA-02 kutuları aynı yerde durur; gerçek parça kullanırken onları silin ya da
   gizleyin.
 
-0.1.3 ve 0.1.4 deneme sonuçları: 7.8.
+0.1.3 ve 0.1.4 deneme sonuçları: 7.8. 0.1.5 düzeltmeleri: 7.9.
 
 ## 10. İndirme yerleri
 
@@ -528,19 +551,19 @@ GitHub: `erkancam01/solidcraft` > **Actions**.
 Çalışmanın sayfasının en altında **Artifacts** bölümünden indirilir (GitHub'a giriş gerekir;
 30 gün saklanır).
 
-Eklenti 0.1.4 ve Aksesuar Kütüphanesi yalnızca `aksesuar-yerlesim` dalında. **Run workflow**
+Eklenti 0.1.5 ve Aksesuar Kütüphanesi yalnızca `aksesuar-yerlesim` dalında. **Run workflow**
 derken dal olarak `aksesuar-yerlesim`'i seçin; `aksesuar-eklentisi` dalı 0.1.2 verir.
 
 ## 11. Bilinen sınırlar
 
 - Kanala Yerleştir'de mesafe oturma yüzünün ortasına göredir; köşe parçalarında payı elle
   eklemek gerekir (bkz. 4.1). Parça ters durursa **180° çevir**'i deneyin.
-- Kontrol kanalından, aynı uygulama oturumunda eklenti çalıştırıldıktan sonra yapılan ikinci
-  `plugin.install` bir kez takıldı (dosyalar yazıldı, izin kaydı güncellenmedi). Uygulamayı
-  yeniden başlatıp kurulumu tekrarlamak çözdü. Pencereden (Eklenti yükle…) kurulumda bu durum
-denenmedi.
-- Kanala Yerleştir, kanal tabanının köşesinde iki kenarın dik kesiştiğini (dikdörtgen taban)
-  varsayar. Yan konum (kanal ortası) yerleştirme anındaki taban genişliğinden alınır.
+- Eklenti kurulduktan ya da güncellendikten sonra izinleri (**cikti** klasörü) kullanıcı kendisi
+  onaylar (Eklenti yükle… onay ekranı); izin otomatik verilmez. Kontrol kanalından aynı oturumda
+  ikinci `plugin.install` bir kez takılmıştı; uygulamayı yeniden başlatıp kurmak çözdü.
+- Kanala Yerleştir (eklenti komutu), kanal tabanının köşesinde iki kenarın dik kesiştiğini
+  (dikdörtgen taban) varsayar. Yan konum (kanal ortası) yerleştirme anındaki taban genişliğinden
+  alınır. (Yerleşim noktaları gönyeli köşeyi 0.1.5'ten beri destekler, 7.9.)
 - Tij listesi bileşen yerleşimlerini ayrı saymaz: her gövde bir kez sayılır (bileşen listesi
   okuma-yalnız eklentilere açık değil).
 - Seçim, girdi penceresinde çizilemediği için komut **o anki seçimi** okur: önce seçin, sonra
@@ -548,14 +571,7 @@ denenmedi.
 - Köşe aktarmanın kartındaki bağlantı noktası **deneme verisidir**; yeniden tanımlayın (7.2).
 - Yerleştirme kartındaki **Ters çevir** ve **180° çevir** köşe aktarmalarda işe yaramaz. Yön
   yanlışsa bağlantı noktasını yeniden tanımlayın.
-- `hardware.place` koşulu tutmayan (etkin olmayan) noktaya parça koymaz. Yerleştirirken FFH'yi
-  koşul tutacak şekilde ayarlayın (Ek kilit 1 için FFH > 1200), sonra Koşullu Parçaları
-  Güncelle'yi çalıştırın.
-- Aynı STEP sonradan yerleştirilirse koşullu bir kopyayla aynı bileşeni paylaşabilir. O zaman
-  Koşullu Parçaları Güncelle'yi yeniden çalıştırın.
 - `assembly.bom` (malzeme listesi komutu) bastırılmış parçaları da sayar. Eklentinin Tij ve
   Malzeme Listesi CSV'si saymaz.
-- Yerleştirme kartı kamera dönünce ekranda sabit kalır, parçayı izlemez.
-- Yarı saydam önizleme uzaktan soluk görünür; yakınlaştırın.
 - Eklenti henüz kütüphane panelinden başlatılamaz; **Eklentiler** menüsünden ya da **Model >
   Eklentiler** grubundan çalıştırın.
