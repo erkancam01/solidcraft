@@ -20,7 +20,7 @@ SKETCH appears during sketch editing; with Preferences › Interface › **Keep 
 | SURFACE | CREATE | **`surface.extrude`**, **`surface.revolve`**, **`surface.sweep`**, **`surface.loft`**, `surface.boundary`, `surface.patch`, `surface.offset`, `surface.ruled`, `surface.blend` |
 | SURFACE | EDIT | **`surface.trim`**, **`surface.untrim`**, **`surface.extend`**, **`surface.stitch`**, `surface.unstitch`, `surface.reverse_normal`, `surface.fair`, `surface.fillet`, `surface.match` |
 | SURFACE | CONVERT | **`surface.thicken`**, **`mesh.convert`** |
-| ASSEMBLE | COMPONENTS | **`component.create`**, **`component.from_bodies`**, **`component.insert_design`**, **`parts.library`** |
+| ASSEMBLE | COMPONENTS | **`component.create`**, **`component.from_bodies`**, **`component.insert_design`**, **`parts.library`**, **`hardware.library.list`** |
 | ASSEMBLE | JOINTS | **`joint.create`**, **`joint.as_built`**, **`joint.origin`**, **`joint.rigid_group`**, `assembly.constraint.create`, `joint.limits`, `joint.gear`, `joint.rack_pinion`, `joint.screw`, `joint.cam`, `joint.reach` |
 | ASSEMBLE | POSITION | **`occurrence.ground`**, **`component.capture_position`**, **`component.revert_position`** |
 | ASSEMBLE | MOTION | **`joint.drive`**, **`joint.motion_link`**, **`motion.study`**, **`motion.trace`**, `explode.create` |

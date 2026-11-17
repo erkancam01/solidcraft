@@ -556,12 +556,25 @@ pub fn section_count<R>(
     count: Option<impl std::fmt::Display>,
     add: impl FnOnce(&mut Ui) -> R,
 ) -> Option<R> {
-    section_with_badge(ui, id, title, default_open, (count.map(|count| count.to_string()), false, false), add)
+    section_with_badge(ui, id, title, default_open, (count.map(|count| count.to_string()), false, false, true), add)
+}
+
+/// [`section_count`] with its title shown as written, not in capitals: a name the user gave (a
+/// folder's), whose capitals the user's language may spell otherwise (Turkish i → İ).
+pub fn section_count_as_written<R>(
+    ui: &mut Ui,
+    id: impl egui::AsIdSalt,
+    title: &str,
+    default_open: bool,
+    count: Option<impl std::fmt::Display>,
+    add: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
+    section_with_badge(ui, id, title, default_open, (count.map(|count| count.to_string()), false, false, false), add)
 }
 
 /// Dense editor disclosure: 24 pt heading and 6 pt field gaps, with the same saved state and commands.
 pub fn editor_section<R>(ui: &mut Ui, id: impl egui::AsIdSalt, title: &str, default_open: bool, add: impl FnOnce(&mut Ui) -> R) -> Option<R> {
-    section_with_badge(ui, id, title, default_open, (None, false, true), add)
+    section_with_badge(ui, id, title, default_open, (None, false, true, true), add)
 }
 
 /// Compact editor disclosure with a method badge. Unsupported content stays
@@ -576,7 +589,7 @@ pub fn method_section<R>(
     add: impl FnOnce(&mut Ui) -> R,
 ) -> Option<R> {
     let result =
-        section_with_badge(ui, id, title, false, (Some(method.to_owned()), false, true), |ui| ui.add_enabled_ui(reason.is_none(), add).inner);
+        section_with_badge(ui, id, title, false, (Some(method.to_owned()), false, true, true), |ui| ui.add_enabled_ui(reason.is_none(), add).inner);
     if let Some(reason) = reason {
         super::text(ui, reason, super::Text::Note("method_section_reason"));
     }
@@ -586,7 +599,7 @@ pub fn method_section<R>(
 /// A collapsed upcoming group with an inert disclosure and a trailing status chip.
 #[cfg(any(test, feature = "test-support"))]
 pub fn pending_section(ui: &mut Ui, id: impl egui::AsIdSalt, title: &str, badge: &str) {
-    section_with_badge(ui, id, title, false, (Some(badge.to_owned()), true, true), |_| {});
+    section_with_badge(ui, id, title, false, (Some(badge.to_owned()), true, true, true), |_| {});
 }
 
 fn section_with_badge<R>(
@@ -594,10 +607,12 @@ fn section_with_badge<R>(
     id: impl egui::AsIdSalt,
     title: &str,
     default_open: bool,
-    badge: (Option<String>, bool, bool),
+    badge: (Option<String>, bool, bool, bool),
     add: impl FnOnce(&mut Ui) -> R,
 ) -> Option<R> {
-    let (count, pending, compact) = badge;
+    // The count, whether the section is still to come, whether it is dense, and whether its
+    // title is shown in capitals.
+    let (count, pending, compact, caps) = badge;
     // A search still walks the body, so a setting inside a folded section can match, without
     // leaving the folded heading on screen for every query.
     if super::settings_search::querying(ui) && super::settings_search::suppress_chrome(ui) && !super::settings_search::texts_hit(ui, &[title]) {
@@ -631,7 +646,7 @@ fn section_with_badge<R>(
     );
     super::disclosure(ui.painter(), icon_rect.center(), open, t.form_dim);
     let text_rect = egui::Rect::from_min_max(egui::pos2((icon_rect.right() + t.form_gap_y).min(rect.right()), rect.top()), rect.max);
-    let caption = solidcraft_ui_text::tr_label(title).to_uppercase();
+    let caption = if caps { solidcraft_ui_text::tr_label(title).to_uppercase() } else { solidcraft_ui_text::tr_label(title).to_owned() };
     let badge_value = count;
     let badge_width = badge_value.as_ref().map_or(0.0, |value| label_width(ui, value) + t.space_12);
     let reserved = if badge_value.is_some() { badge_width + t.space_12 } else { 0.0 };

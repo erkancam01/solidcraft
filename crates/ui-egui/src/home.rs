@@ -376,6 +376,16 @@ fn make_watched(key: &str, stop: &std::sync::Arc<solidcraft_engine::doc::progres
     made.unwrap_or_else(|_| (key.to_string(), None, None))
 }
 
+/// A model or design file's picture for another list (the Hardware Library), the way Home makes a
+/// recent design's: its cached picture while the file is unchanged, else the file opened in a
+/// scratch session and drawn, then cached. For a picture thread: `stop` stops the open part way,
+/// and nothing is cached then.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn file_picture(key: &str, stop: &std::sync::Arc<solidcraft_engine::doc::progress::Progress>) -> Option<egui::ColorImage> {
+    clean_old_pictures();
+    make_watched(key, stop).1
+}
+
 /// [`make`], with no picture once `stopped` says so: a build stopped part way is not the design,
 /// and its picture must not be cached as the design's.
 fn make_unless(key: &str, stopped: &dyn Fn() -> bool) -> Made {

@@ -1656,6 +1656,9 @@ preference_settings! {
     view_dxf_zero: String = "target".into();
     /// Send to Slicer: the last slicer used (an installed slicer's id or a program path).
     send_slicer: String = String::new();
+    /// The Hardware Library's folder (ASSEMBLE › Hardware Library): each subfolder is a group of
+    /// STEP parts and profiles. Empty: the panel asks for one.
+    hardware_library_dir: String = String::new();
     /// Slicers that can load a file into the window that is already open do so (default on).
     slicer_single_instance: bool = true, 0;
     /// Export STL, Export 3MF and Send to Slicer start with the design's body in Bodies when it

@@ -281,8 +281,8 @@ pub const SECTIONS: &[Section] = &[
     Section {
         tab: "ASSEMBLE",
         panel: "COMPONENTS",
-        promoted: 4,
-        ids: &["component.create", "component.from_bodies", "component.insert_design", "parts.library"],
+        promoted: 5,
+        ids: &["component.create", "component.from_bodies", "component.insert_design", "parts.library", "hardware.library.list"],
     },
     Section {
         tab: "ASSEMBLE",
@@ -563,6 +563,7 @@ pub const RIBBON_LABELS: &[(&str, &str)] = &[
     ("contact.enable_sets", "Contact Sets"),
     ("document.inspect", "Inspect"),
     ("document.units", "Units"),
+    ("hardware.library.list", "Hardware"),
     ("inspect.accessibility", "Access"),
     ("inspect.center_of_mass", "Mass Center"),
     ("inspect.curvature_comb", "Curv. Comb"),

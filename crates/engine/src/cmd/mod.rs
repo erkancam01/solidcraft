@@ -81,6 +81,7 @@ mod design_link;
 mod file;
 mod frame;
 mod frame_end_cap;
+mod hardware;
 pub(crate) mod inspect;
 mod interference;
 pub(crate) mod joints;
@@ -388,6 +389,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(panels::COMMANDS.iter());
     v.extend(config::COMMANDS.iter());
     v.extend(parts::COMMANDS.iter());
+    v.extend(hardware::COMMANDS.iter());
     v.extend(bom::COMMANDS.iter());
     v.extend(mass_properties::COMMANDS.iter());
     v.extend(browser::COMMANDS.iter());

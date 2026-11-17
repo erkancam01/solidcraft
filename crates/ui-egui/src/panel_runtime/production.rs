@@ -31,9 +31,10 @@ enum Product {
     RenderShots,
     SketchOptions,
     Bom,
+    HardwareLibrary,
 }
 impl Product {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::Browser,
         Self::History,
         Self::Assistant,
@@ -43,8 +44,12 @@ impl Product {
         Self::RenderShots,
         Self::SketchOptions,
         Self::Bom,
+        Self::HardwareLibrary,
     ];
     const NEW_RENDER: [Self; 3] = [Self::RenderLibrary, Self::RenderInspector, Self::RenderShots];
+    /// Panels a command opens (the Bill of Materials, the Hardware Library), never a view toggle:
+    /// shown while their content exists, placed below a right-hand section when first opened.
+    const ON_DEMAND: [Self; 2] = [Self::Bom, Self::HardwareLibrary];
 
     fn index(self) -> usize {
         match self {
@@ -57,6 +62,7 @@ impl Product {
             Self::RenderShots => 6,
             Self::SketchOptions => 7,
             Self::Bom => 8,
+            Self::HardwareLibrary => 9,
         }
     }
     fn visible(self, app: &crate::SolveApp) -> bool {
@@ -70,6 +76,7 @@ impl Product {
             Self::RenderShots => app.preferences.render_shots_strip,
             Self::SketchOptions => true,
             Self::Bom => crate::bom_panel::available(app),
+            Self::HardwareLibrary => crate::hardware_library::available(app),
         }
     }
     fn set_visible(self, app: &mut crate::SolveApp, open: bool) {
@@ -82,7 +89,8 @@ impl Product {
             Self::RenderInspector => crate::render_workspace::set_inspector_visible(app, open),
             Self::RenderShots => app.preferences.render_shots_strip = open,
             Self::Bom if !open => app.bom = None,
-            Self::Bom | Self::SketchOptions => {}
+            Self::HardwareLibrary if !open => app.hardware_library = None,
+            Self::Bom | Self::HardwareLibrary | Self::SketchOptions => {}
         }
     }
 
@@ -97,6 +105,7 @@ impl Product {
             Self::RenderShots => "render-shots",
             Self::SketchOptions => crate::sketch_palette::INSTANCE_ID,
             Self::Bom => "bom",
+            Self::HardwareLibrary => "hardware-library",
         }
     }
     fn kind(self) -> &'static str {
@@ -110,6 +119,7 @@ impl Product {
             Self::RenderShots => "solidcraft.render_shots",
             Self::SketchOptions => "solidcraft.sketch_options",
             Self::Bom => "solidcraft.bom",
+            Self::HardwareLibrary => "solidcraft.hardware_library",
         }
     }
     fn title_key(self) -> &'static str {
@@ -123,12 +133,14 @@ impl Product {
             Self::RenderShots => "render.ribbon_shots",
             Self::SketchOptions => "ui.palette_sketch_options",
             Self::Bom => crate::bom_panel::TITLE_KEY,
+            Self::HardwareLibrary => crate::hardware_library::TITLE_KEY,
         }
     }
     fn icon(self) -> &'static str {
         match self {
             Self::SketchOptions => "sketch",
             Self::Bom => "bom",
+            Self::HardwareLibrary => "folder",
             _ => "list",
         }
     }
@@ -145,6 +157,7 @@ impl Product {
             Self::RenderBrowser | Self::RenderLibrary | Self::RenderInspector | Self::RenderShots => render && !crate::render_ui::focused(app),
             Self::SketchOptions => !render && crate::sketch_palette::editing(app),
             Self::Bom => crate::bom_panel::available(app),
+            Self::HardwareLibrary => !render && crate::hardware_library::available(app),
         }
     }
     fn default_zone(self, placement: &crate::prefs::Prefs) -> Zone {
@@ -154,7 +167,7 @@ impl Product {
             Self::RenderBrowser | Self::RenderLibrary if placement.render_browser_side == "right" => Zone::Right,
             Self::RenderShots => Zone::Bottom,
             Self::RenderInspector if placement.render_inspector_side != "left" => Zone::Right,
-            Self::SketchOptions | Self::Bom => Zone::Right,
+            Self::SketchOptions | Self::Bom | Self::HardwareLibrary => Zone::Right,
             _ => Zone::Left,
         }
     }
@@ -188,7 +201,7 @@ impl Product {
                 ("references", "render.stage_panels.surfaces_references", "library"),
             ],
             Self::RenderInspector => vec![("remove", "render.inspector_remove", "delete")],
-            Self::Browser | Self::RenderShots | Self::SketchOptions | Self::Bom => Vec::new(),
+            Self::Browser | Self::RenderShots | Self::SketchOptions | Self::Bom | Self::HardwareLibrary => Vec::new(),
         };
         entries.into_iter().map(|(id, key, icon)| HeaderActionSpec { id: ControlId(id.into()), label_key: key.into(), icon: icon.into() }).collect()
     }
@@ -276,7 +289,7 @@ impl Product {
                     .into_iter()
                     .collect()
             }
-            Self::Browser | Self::RenderShots | Self::SketchOptions | Self::Bom => Vec::new(),
+            Self::Browser | Self::RenderShots | Self::SketchOptions | Self::Bom | Self::HardwareLibrary => Vec::new(),
         };
         presentation
     }
@@ -301,7 +314,7 @@ impl PanelVisibilitySnapshot {
 
     pub(crate) fn restore(self, app: &mut crate::SolveApp) {
         for (product, visible) in Product::ALL.into_iter().zip(self.0) {
-            if !matches!(product, Product::Bom | Product::SketchOptions | Product::RenderLibrary) {
+            if !matches!(product, Product::Bom | Product::HardwareLibrary | Product::SketchOptions | Product::RenderLibrary) {
                 product.set_visible(app, visible);
             }
         }
@@ -334,7 +347,8 @@ struct ProductionSnapshot {
     document: DocumentId,
     sketch_owner: Option<(DocumentId, u64)>,
     sketch_placement_attempt: Option<(u64, LogicalRect, u64)>,
-    bom_focus_attempt: Option<(u64, LogicalRect)>,
+    /// The last attempt to show each on-demand panel (`Product::ON_DEMAND`): (layout revision, capacity).
+    focus_attempts: [Option<(u64, LogicalRect)>; Product::ALL.len()],
     render_addition_attempts: [Option<(u64, LogicalRect)>; Product::ALL.len()],
     visible: [bool; Product::ALL.len()],
     visibility: [Option<VisibilityIntent>; Product::ALL.len()],
@@ -363,7 +377,7 @@ impl ProductionState {
             visible: Product::ALL.map(|product| product.visible(app)),
             sketch_owner: None,
             sketch_placement_attempt: None,
-            bom_focus_attempt: None,
+            focus_attempts: Default::default(),
             visibility: Default::default(),
             panels: Product::ALL.map(|product| PanelSnapshot {
                 product,
@@ -446,6 +460,7 @@ pub(crate) fn enable_production(app: &mut crate::SolveApp) -> PanelResult<()> {
     let repaired = super::preferences::configure_preferences(&mut integration, &app.panel_layout_preferences, &mut catalogue)?;
     app.panel_runtime = Some(integration);
     crate::bom_panel::set_focus_pending(app, true);
+    crate::hardware_library::set_focus_pending(app, true);
     if repaired {
         super::preferences::report_notice(app);
     }
@@ -458,7 +473,7 @@ pub(crate) fn refresh_production(app: &crate::SolveApp) -> PanelResult<()> {
     let document = DocumentId::new(app.session.document_id.clone())?;
     if snapshot.document != document {
         snapshot.sketch_placement_attempt = None;
-        snapshot.bom_focus_attempt = None;
+        snapshot.focus_attempts = Default::default();
         for panel in &mut snapshot.panels {
             panel.extent = None;
         }
@@ -467,7 +482,7 @@ pub(crate) fn refresh_production(app: &crate::SolveApp) -> PanelResult<()> {
     // Keep an explicit view-toggle edge pending while its content context is
     // unavailable. Ordinary workspace changes do not create a new toggle edge.
     for product in Product::ALL {
-        if product == Product::Bom {
+        if Product::ON_DEMAND.contains(&product) {
             continue;
         }
         let visible = product.visible(app);
@@ -537,7 +552,7 @@ pub(crate) fn drain_production_actions(app: &mut crate::SolveApp) -> PanelResult
                 crate::render_workspace::library::set_library_mode(app, mode);
             }
             Product::RenderInspector => crate::render_workspace::inspector_panel::shared_remove(app),
-            Product::Browser | Product::RenderShots | Product::SketchOptions | Product::Bom => {}
+            Product::Browser | Product::RenderShots | Product::SketchOptions | Product::Bom | Product::HardwareLibrary => {}
         }
     }
     Ok(())
@@ -699,7 +714,7 @@ pub(crate) fn sync_production_visibility(app: &mut crate::SolveApp) -> PanelResu
     let addition = app.universal_panel_frame().map(|frame| (revision, frame.layout.capacity));
     let mut adding = None;
     for product in Product::ALL {
-        if product == Product::Bom {
+        if Product::ON_DEMAND.contains(&product) {
             continue;
         }
         let visible = product.visible(app);
@@ -779,46 +794,68 @@ pub(crate) fn sync_production_visibility(app: &mut crate::SolveApp) -> PanelResu
         app.render_workspace.view.inspector_visibility_request = None;
     }
     sync_sketch_options(app)?;
-    sync_bom(app)
+    for product in Product::ON_DEMAND {
+        sync_on_demand(app, product)?;
+    }
+    Ok(())
 }
 
-fn sync_bom(app: &mut crate::SolveApp) -> PanelResult<()> {
+fn focus_pending(app: &crate::SolveApp, product: Product) -> bool {
+    match product {
+        Product::Bom => crate::bom_panel::focus_pending(app),
+        Product::HardwareLibrary => crate::hardware_library::focus_pending(app),
+        _ => false,
+    }
+}
+
+fn set_focus_pending(app: &mut crate::SolveApp, product: Product, pending: bool) {
+    match product {
+        Product::Bom => crate::bom_panel::set_focus_pending(app, pending),
+        Product::HardwareLibrary => crate::hardware_library::set_focus_pending(app, pending),
+        _ => {}
+    }
+}
+
+/// Show and focus an on-demand panel (`Product::ON_DEMAND`) its command asked for: open it
+/// below a section on its side when the layout doesn't hold it yet.
+fn sync_on_demand(app: &mut crate::SolveApp, product: Product) -> PanelResult<()> {
     let Some(integration) = app.panel_runtime.as_ref() else { return Ok(()) };
     let Some(state) = integration.production.clone() else { return Ok(()) };
-    let mut snapshot = state.0.try_borrow_mut().map_err(|_| error(Rule::Lifecycle, "BOM focus is borrowed"))?;
+    let mut snapshot = state.0.try_borrow_mut().map_err(|_| error(Rule::Lifecycle, "panel focus is borrowed"))?;
     let layout = integration.runtime().layout().layout();
     let revision = integration.runtime().layout().inspect().revision;
     let mut mutations = Vec::new();
-    let mut bom_focused = false;
-    let mut bom_attempt = None;
-    if crate::bom_panel::focus_pending(app) {
-        let id = InstanceId::new(Product::Bom.id())?;
+    let mut focused = false;
+    let mut attempted = None;
+    if focus_pending(app, product) {
+        let id = InstanceId::new(product.id())?;
         if layout.containing(&id).is_ok_and(|section| !section.collapsed && section.active == id) {
-            bom_focused = true;
+            focused = true;
         } else if let Some(attempt) = app.universal_panel_frame().map(|frame| (revision, frame.layout.capacity))
-            && Some(attempt) != snapshot.bom_focus_attempt
+            && Some(attempt) != snapshot.focus_attempts[product.index()]
         {
-            let mutation = if layout.instance(&id).is_ok() { Mutation::Focus { instance: id } } else { open_bom(integration, layout, id)? };
+            let mutation =
+                if layout.instance(&id).is_ok() { Mutation::Focus { instance: id } } else { open_on_demand(integration, layout, product, id)? };
             mutations.push(mutation);
-            bom_attempt = Some(attempt);
-            bom_focused = true;
+            attempted = Some(attempt);
+            focused = true;
         }
     }
-    if let Some(attempt) = bom_attempt {
-        snapshot.bom_focus_attempt = Some(attempt);
+    if let Some(attempt) = attempted {
+        snapshot.focus_attempts[product.index()] = Some(attempt);
     }
     drop(snapshot);
     if !mutations.is_empty() {
         app.dispatch_panel_layout(LayoutAction::Apply { expected_revision: Some(revision), mutations })?;
     }
-    if bom_focused {
-        crate::bom_panel::set_focus_pending(app, false);
+    if focused {
+        set_focus_pending(app, product, false);
     }
     Ok(())
 }
 
-fn open_bom(integration: &AppPanelRuntime, layout: &Layout, instance: InstanceId) -> PanelResult<Mutation> {
-    let kind = PanelKind::new(Product::Bom.kind())?;
+fn open_on_demand(integration: &AppPanelRuntime, layout: &Layout, product: Product, instance: InstanceId) -> PanelResult<Mutation> {
+    let kind = PanelKind::new(product.kind())?;
     let spec = integration.runtime().layout().registry().get(&kind)?;
     let zone = spec.default_zone;
     let size = spec.default_size;
@@ -910,7 +947,7 @@ fn registry() -> PanelResult<PanelRegistry> {
         let history = product == Product::History;
         let assistant = product == Product::Assistant;
         let sketch = product == Product::SketchOptions;
-        let bom = product == Product::Bom;
+        let bom = Product::ON_DEMAND.contains(&product);
         let mut allowed_zones = [Zone::Left, Zone::Right, Zone::Floating].into_iter().collect::<std::collections::BTreeSet<_>>();
         let shots = product == Product::RenderShots;
         if history || shots {
@@ -924,14 +961,14 @@ fn registry() -> PanelResult<PanelRegistry> {
             allowed_zones,
             default_zone: match product {
                 Product::History | Product::RenderShots => Zone::Bottom,
-                Product::RenderInspector | Product::SketchOptions | Product::Bom => Zone::Right,
+                Product::RenderInspector | Product::SketchOptions | Product::Bom | Product::HardwareLibrary => Zone::Right,
                 _ => Zone::Left,
             },
             min_size: Size {
                 width: if history { crate::ui_kit::history_width(false) } else { 240.0 },
                 height: match product {
                     Product::RenderLibrary => 180.0,
-                    Product::Bom => 200.0,
+                    Product::Bom | Product::HardwareLibrary => 200.0,
                     Product::SketchOptions => 150.0,
                     Product::RenderInspector => 160.0,
                     Product::Assistant => 120.0,
@@ -965,7 +1002,7 @@ fn default_layout(app: &crate::SolveApp, placement: &crate::prefs::Prefs, worksp
     let share = if (0.05..=0.95).contains(&share) { share } else { 0.5 };
     for product in Product::ALL {
         let id = InstanceId::new(product.id())?;
-        let requested_open = product != Product::Bom && product.visible(app);
+        let requested_open = !Product::ON_DEMAND.contains(&product) && product.visible(app);
         let kind = PanelKind::new(product.kind())?;
         let spec = registry.get(&kind)?;
         let zone = product.default_zone(placement);
@@ -1409,6 +1446,7 @@ impl FramePanelContent for ProductionFrame<'_> {
             Product::Assistant => crate::agent_chat::shared_content(self.app, ui, context.flow),
             Product::SketchOptions => crate::sketch_palette::shared_body(self.app, ui),
             Product::Bom => crate::bom_panel::shared_content(self.app, ui),
+            Product::HardwareLibrary => crate::hardware_library::shared_content(self.app, ui),
             Product::RenderLibrary => crate::render_workspace::library::shared_library(self.app, ui),
             Product::RenderInspector => crate::render_workspace::inspector_panel::shared_body(self.app, ui),
             Product::RenderShots => crate::render_workspace::shots::shared_shots(self.app, ui, context.flow, slot == ContentSlot::Inline),

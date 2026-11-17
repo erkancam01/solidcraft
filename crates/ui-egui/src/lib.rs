@@ -80,6 +80,8 @@ pub use solidcraft_ui_kit::frame;
 pub mod frame_rate;
 pub mod gizmo;
 pub mod gpu;
+mod hardware_connection;
+pub mod hardware_library;
 pub mod help;
 pub use solidcraft_ui_kit::history_bar;
 mod history_folds;
@@ -680,6 +682,11 @@ pub struct SolveApp {
     pub kicad_import: Option<kicad_import_dialog::Dialog>,
     /// The Bill of Materials window, when open.
     pub bom: Option<bom_panel::BomPanel>,
+    /// The Hardware Library panel, when open: one for every design.
+    pub hardware_library: Option<hardware_library::HardwareLibrary>,
+    /// A hardware part's connection point being picked (`hardware_connection`): the part is in
+    /// the design until Save or Cancel takes it back to the checkpoint before it.
+    pub(crate) hardware_connection: Option<hardware_connection::Pick>,
     material_card_review: Option<material_card_review::ReviewWindow>,
     /// Context menus, rename box and Properties window.
     pub menu: context_menu::MenuState,
@@ -1021,6 +1028,8 @@ impl SolveApp {
             sketch_report: None,
             kicad_import: None,
             bom: None,
+            hardware_library: None,
+            hardware_connection: None,
             material_card_review: None,
             menu: context_menu::MenuState::default(),
             gesture: mouse_gesture::State::default(),
@@ -2404,6 +2413,10 @@ impl SolveApp {
             } else {
                 bom_panel::open(self);
             }
+            return;
+        }
+        if id == hardware_library::COMMAND {
+            hardware_library::open(self);
             return;
         }
         // Inspect → Measure → Properties: the window, not a reply nobody sees (#8095).
@@ -3968,6 +3981,7 @@ impl SolveApp {
         mesh_units::show(self, ui.ctx());
         plugin_menu::show(self, ui.ctx());
         stand_up::show(self, ui.ctx());
+        hardware_connection::show(self, ui.ctx());
         prefs_notice::show(self, ui.ctx());
         context_menu::show(self, ui.ctx());
         mouse_gesture::show(self, ui.ctx());
