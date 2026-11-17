@@ -373,6 +373,95 @@ pub struct HardwareSlotListed {
     pub values: Option<Vec<serde_json::Value>>,
     /// The planar joint's limits: `across` (unless an expression) and the turn held.
     pub limits: Option<Vec<serde_json::Value>>,
+    /// The part `hardware.place` put there, while its occurrence is in the design.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placed: Option<HardwarePlacement>,
+}
+
+/// A part `hardware.place` put on a slot, as the design's slot list keeps it (`placed`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HardwarePlacement {
+    /// The slot's id.
+    pub slot: String,
+    /// The part's STEP file.
+    pub path: String,
+    /// The component the file came in as (shared by every placement of that file).
+    pub component: u64,
+    /// The part's occurrence on this slot.
+    pub occurrence: u64,
+    /// The planar joint holding it there.
+    pub joint: u64,
+}
+
+/// Put a library part on a placement slot (one undo step), or, with `preview`, work out where it
+/// would go without changing the design.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HardwarePlaceParams {
+    /// The slot's id: one in use now, with nothing on it.
+    pub slot: String,
+    /// The part's STEP file (`.step`, `.stp`); its data card must give `connection`.
+    pub path: String,
+    /// Work it out without changing the design.
+    #[serde(default)]
+    pub preview: bool,
+}
+
+/// What `hardware.place` returns.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HardwarePlaced {
+    /// The slot.
+    pub slot: String,
+    /// The part's file.
+    pub path: String,
+    /// The part's name: its card's part number, else its file's name.
+    pub name: String,
+    /// Where the part's occurrence goes in the world: a row-major 4x4 placement.
+    pub transform: [[f64; 4]; 4],
+    /// The slot's frame in the world (as `hardware.slot.list` gives it): the part's connection
+    /// point goes on its origin, its connection x along x and its connection z against z (along it
+    /// when the slot flips).
+    pub frame: HardwareSlotFrame,
+    /// The part's component; `null` for a preview.
+    pub component: Option<u64>,
+    /// The part's new occurrence; `null` for a preview.
+    pub occurrence: Option<u64>,
+    /// The planar joint holding it on the slot; `null` for a preview.
+    pub joint: Option<u64>,
+    /// The file was placed before: this is another occurrence of the same component.
+    pub reused: bool,
+    /// Worked out only: the design is unchanged.
+    pub preview: bool,
+    /// What the joint reported, or that the part did not come to the slot.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    /// In the warn parameter-check mode: what the call's parameters got wrong.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_warnings: Vec<String>,
+}
+
+/// Take the part `hardware.place` put on a slot away again (one undo step).
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HardwareUnplaceParams {
+    /// The slot's id.
+    pub slot: String,
+}
+
+/// What `hardware.unplace` returns.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HardwareUnplaced {
+    /// The slot, now free.
+    pub slot: String,
+    /// The occurrence removed (already gone when the part was deleted by hand).
+    pub occurrence: u64,
+    /// The joint removed with it.
+    pub joint: u64,
+    /// The component went too: no other placement used it.
+    pub component_removed: bool,
+    /// In the warn parameter-check mode: what the call's parameters got wrong.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_warnings: Vec<String>,
 }
 
 /// What `hardware.slot.list` returns.

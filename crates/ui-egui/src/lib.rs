@@ -82,6 +82,7 @@ pub mod gizmo;
 pub mod gpu;
 mod hardware_connection;
 pub mod hardware_library;
+mod hardware_place;
 mod hardware_slot;
 pub mod help;
 pub use solidcraft_ui_kit::history_bar;
@@ -3987,6 +3988,7 @@ impl SolveApp {
         stand_up::show(self, ui.ctx());
         hardware_connection::show(self, ui.ctx());
         hardware_slot::show(self, ui.ctx());
+        hardware_place::tick(self, ui.ctx());
         prefs_notice::show(self, ui.ctx());
         context_menu::show(self, ui.ctx());
         mouse_gesture::show(self, ui.ctx());

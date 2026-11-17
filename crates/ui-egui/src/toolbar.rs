@@ -2434,6 +2434,7 @@ pub(crate) fn unfinished(app: &SolveApp) -> bool {
         || crate::occurrence_drag::active(app)
         || crate::joint_drag::active(app)
         || crate::occurrence_rotate::active(app)
+        || crate::hardware_place::active(app)
 }
 
 /// Cancels what one Esc cancels before it reaches the dialog, the selection or the sketch:
@@ -2445,6 +2446,7 @@ pub(crate) fn cancel_unfinished(app: &mut SolveApp) -> bool {
         || crate::occurrence_drag::cancel(app)
         || crate::joint_drag::cancel(app)
         || crate::occurrence_rotate::cancel(app)
+        || crate::hardware_place::cancel(app)
     {
         return true;
     }

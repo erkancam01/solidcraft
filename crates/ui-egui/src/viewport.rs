@@ -5999,7 +5999,8 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     let proj = projection(app, rect);
     // A right drag that starts on a part turns it (`occurrence_rotate`); navigation leaves that
     // drag alone.
-    if !flat {
+    // Nor while a part is placed on slots (`hardware_place`): a click places it.
+    if !flat && !crate::hardware_place::active(app) {
         crate::occurrence_rotate::update(app, ui.ctx(), &proj, rect, axes, inside);
     }
     if let Ok(mut cache) = app.viewport.display.lock() {
@@ -6504,7 +6505,9 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         // click already allows the pointer a few points of travel, as a mouse moves while it is
         // clicked.
         if resp.secondary_clicked() && !crate::mouse_gesture::took_press(app) {
-            if app.tool.is_some() {
+            if crate::hardware_place::cancel(app) {
+                // A right click ends placing a part on slots.
+            } else if app.tool.is_some() {
                 crate::tools::finish(app);
             } else if app.dialog.is_none() {
                 crate::context_menu::open(app, p, held_mods);
@@ -6703,7 +6706,14 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     // Dragging a part moves its free chain (outside sketches), or reaches within its joints
     // when the chain is anchored. Shift, Ctrl/Cmd or Alt held as the drag starts
     // draws a selection box instead, as a drag from empty space does.
-    if app.tool.is_none() && app.dialog.is_none() && primary_nav.is_none() && mode.is_none() && app.session.active_sketch.is_none() && !held {
+    if app.tool.is_none()
+        && app.dialog.is_none()
+        && primary_nav.is_none()
+        && mode.is_none()
+        && app.session.active_sketch.is_none()
+        && !held
+        && !crate::hardware_place::active(app)
+    {
         if resp.drag_started_by(egui::PointerButton::Primary)
             // Physical Ctrl on macOS is not the primary click-selection modifier, but must
             // still keep a modified drag from moving a part.
@@ -6804,6 +6814,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     crate::dialogs_assembly::origins(app, &painter, &proj);
     crate::hardware_connection::overlay(app, &painter, &proj);
     crate::hardware_slot::overlay(app, &painter, &proj);
+    crate::hardware_place::show(app, ui, &painter, &proj);
     if !crate::joint_handles::visible(app) {
         crate::dialogs_assembly::joint_glyphs(app, &painter, &proj);
     }

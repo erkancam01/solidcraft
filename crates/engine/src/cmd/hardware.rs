@@ -12,6 +12,11 @@
 //! works out each one's frame in the world and the planar joint (`joint.create`'s `a`, `values`
 //! and `limits`) that puts a part's connection frame on it, as the plugin's "Kanala Yerleştir"
 //! makes it.
+//!
+//! `hardware.place` puts a library part on a slot that way: it inserts the part's STEP file (or,
+//! when an earlier placement brought that file in, places its component again), then joins the
+//! part's connection frame to the slot with that planar joint, all in one undo step, and keeps
+//! the placement in the slot list's `placed`; `hardware.unplace` takes it away again.
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -25,8 +30,9 @@ use solidcraft_geom::prelude::*;
 use super::CommandSpec;
 use crate::schema::hardware::{
     HardwareCard, HardwareCardSet, HardwareCardSetParams, HardwareConnection, HardwareGroup, HardwareKind, HardwareLibrary,
-    HardwareLibraryListParams, HardwarePart, HardwareRole, HardwareSlot, HardwareSlotAddParams, HardwareSlotDeleteParams, HardwareSlotDeleted,
-    HardwareSlotEditParams, HardwareSlotFrame, HardwareSlotList, HardwareSlotListParams, HardwareSlotListed, HardwareSlotSet,
+    HardwareLibraryListParams, HardwarePart, HardwarePlaceParams, HardwarePlaced, HardwarePlacement, HardwareRole, HardwareSlot,
+    HardwareSlotAddParams, HardwareSlotDeleteParams, HardwareSlotDeleted, HardwareSlotEditParams, HardwareSlotFrame, HardwareSlotList,
+    HardwareSlotListParams, HardwareSlotListed, HardwareSlotSet, HardwareUnplaceParams, HardwareUnplaced,
 };
 use crate::schema::{TypedContract, output_schema_for};
 use crate::{Result, Session, params::bad};
@@ -38,6 +44,14 @@ const SLOT_ADD_CONTRACT: TypedContract<HardwareSlotAddParams> = TypedContract::n
 const SLOT_DELETE_CONTRACT: TypedContract<HardwareSlotDeleteParams> = TypedContract::new();
 const SLOT_EDIT_CONTRACT: TypedContract<HardwareSlotEditParams> = TypedContract::new();
 const SLOT_LIST_CONTRACT: TypedContract<HardwareSlotListParams> = TypedContract::new();
+const PLACE_CONTRACT: TypedContract<HardwarePlaceParams> = TypedContract::new();
+const UNPLACE_CONTRACT: TypedContract<HardwareUnplaceParams> = TypedContract::new();
+
+/// `hardware.place`'s refusal for a part whose card has no connection frame. The app shows it in
+/// the user's language (the English catalog has this text).
+pub const NO_CONNECTION: &str = "Define the connection point first";
+/// `hardware.place`'s refusal for a slot that already holds a part.
+pub const TAKEN: &str = "This slot is taken";
 
 /// The design metadata key the placement slots are kept under.
 pub const SLOTS_KEY: &str = "tr.aksesuar.yerlesim";
@@ -150,7 +164,21 @@ pub static COMMANDS: &[CommandSpec] = &[
          placed now; the list still succeeds), joint_a, values, limits: what joint.create {type: \"planar\", a: joint_a, b: <the \
          part's connection frame>, values, limits, flip} takes to put the part there (values: the shift along a's x and y, one of \
          them along as its expression, the other across; then the turn in deg; limits hold across and the turn)}], unreadable? \
-         (entries this version can't read). Never changes the design",
+         (entries this version can't read), placed? ({slot, path, component, occurrence, joint}: the part hardware.place put          there). Never changes the design",
+        ),
+    CommandSpec::new("hardware.place", "Place Hardware", crate::checked!("hardware.place", place_part))
+        .icon("joint")
+        .contract(&PLACE_CONTRACT)
+        .output(output_schema_for::<HardwarePlaced>)
+        .params(
+            "slot: id (in use now, with nothing on it), path: the part's .step or .stp file, whose data card gives `connection`;          preview?: bool (work out where it goes, change nothing) → slot, path, name (the card's part_no, else the file's name),          transform (the part's world placement, row-major 4x4), frame (the slot's, world), component, occurrence, joint, reused (a          further occurrence of the component an earlier hardware.place of that file brought in, else the file is inserted),          preview, warnings?. Puts the part's connection frame on the slot with a planar joint (joint.create with the slot's          joint_a, values, limits and flip; the connection z against the slot's z), so the part follows the slot's parameters;          kept in the slot list's `placed`. One undo step, all or nothing",
+        ),
+    CommandSpec::new("hardware.unplace", "Remove Placed Hardware", crate::checked!("hardware.unplace", unplace_part))
+        .icon("delete")
+        .contract(&UNPLACE_CONTRACT)
+        .output(output_schema_for::<HardwareUnplaced>)
+        .params(
+            "slot: id → slot, occurrence, joint, component_removed. Takes the part hardware.place put there away: its joint, its          occurrence, and its component when no other placement uses it. One undo step",
         ),
 ];
 
@@ -532,8 +560,11 @@ fn around(s: &Session, origin: &JointOrigin) -> std::result::Result<Around, Stri
     let placed = if origin.occurrence == 0 { IDENTITY } else { joints::occurrence_world(doc, origin.occurrence) };
     let world = mat_mul(&placed, &frame);
     // The part's own coordinates, those its bodies' edges and faces are in, to the world.
-    let on_part =
-        if origin.inside.is_empty() { frame } else { joints::resolve_origin(doc, &st, &JointOrigin::new(origin.part(), origin.snap.clone())).map_err(|e| e.to_string())? };
+    let on_part = if origin.inside.is_empty() {
+        frame
+    } else {
+        joints::resolve_origin(doc, &st, &JointOrigin::new(origin.part(), origin.snap.clone())).map_err(|e| e.to_string())?
+    };
     let to_world = mat_mul(&world, &mat_inverse(&on_part).ok_or("the slot's frame has no inverse")?);
     let corner_on_part = column(&on_part, 3);
     let component = super::joints::component_of(s, origin.part());
@@ -608,6 +639,7 @@ fn is_middle(text: &str) -> bool {
 /// What a slot comes to now: its placement, the joint that puts a part there, and whether it is
 /// in use.
 struct Worked {
+    placement: Placement,
     frame: HardwareSlotFrame,
     joint_a: Value,
     values: Vec<Value>,
@@ -647,7 +679,7 @@ fn work_out(s: &Session, slot: &HardwareSlot) -> std::result::Result<Worked, Str
         a.insert("path".into(), json!(path));
     }
     let frame = HardwareSlotFrame { origin: coordinates(p.origin), x: coordinates(p.x), y: coordinates(p.y), z: coordinates(p.z) };
-    Ok(Worked { frame, joint_a, values, limits })
+    Ok(Worked { placement: p, frame, joint_a, values, limits })
 }
 
 /// A slot as `hardware.slot.list` lists it: whatever is wrong with it is its `error`.
@@ -667,7 +699,7 @@ fn listed(s: &Session, slot: HardwareSlot) -> HardwareSlotListed {
             false
         }
     };
-    HardwareSlotListed { slot, active, frame, error, joint_a, values, limits }
+    HardwareSlotListed { slot, active, frame, error, joint_a, values, limits, placed: None }
 }
 
 /// The slot list kept in the design, with its other keys (`placed`) as they are: a new one when
@@ -803,7 +835,9 @@ fn pick_origin(s: &Session, edge: [f64; 3], corner: [f64; 3], on: Option<[f64; 3
     let origin = super::joints::origin_param(s, Some(&Value::Object(v)), cmd)?;
     match &origin.snap {
         Snap::Edge { edge: Some(_), face: Some(_), corner: Some(_), axis: None, .. } => Ok(origin),
-        _ => Err(bad(cmd, "pick a straight edge of a planar floor face, and the corner it starts from: the edge, the face and the corner need names")),
+        _ => {
+            Err(bad(cmd, "pick a straight edge of a planar floor face, and the corner it starts from: the edge, the face and the corner need names"))
+        }
     }
 }
 
@@ -928,16 +962,246 @@ fn slot_list(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "hardware.slot.list";
     let r: HardwareSlotListParams = serde_json::from_value(p.clone()).map_err(|e| bad(cmd, e.to_string()))?;
     let store = store(s, cmd)?;
+    let placed = placements(&store);
     let mut slots = Vec::new();
     let mut unreadable = Vec::new();
     for raw in raw_slots(&store) {
         match serde_json::from_value::<HardwareSlot>(raw.clone()) {
             Ok(slot) if r.group.as_deref().is_some_and(|g| g != slot.group) => {}
-            Ok(slot) => slots.push(listed(s, slot)),
+            Ok(slot) => {
+                let mut l = listed(s, slot);
+                l.placed = placed.iter().find(|e| e.slot == l.slot.id && live(s, e)).cloned();
+                slots.push(l);
+            }
             Err(e) => unreadable.push(format!("{}: {e}", raw_id(&raw).unwrap_or("?"))),
         }
     }
     reply(cmd, HardwareSlotList { slots, unreadable, param_warnings: Vec::new() })
+}
+
+// ---- Placing parts on slots ----
+
+/// The planar joint's mate: B's z against A's (half a turn about x), as `joint.create` mates two
+/// origins that are not both datums.
+const MATED: Mat = [[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+
+/// A frame as a placement: its axes and its origin as the columns.
+fn frame_mat(origin: Vec3, x: Vec3, y: Vec3, z: Vec3) -> Mat {
+    [[x.x, x.y, x.z, 0.0], [y.x, y.y, y.z, 0.0], [z.x, z.y, z.z, 0.0], [origin.x, origin.y, origin.z, 1.0]]
+}
+
+/// A placement row by row, as the commands give matrices, to a nanometre, no `-0`.
+fn rows(m: &Mat) -> [[f64; 4]; 4] {
+    std::array::from_fn(|r| std::array::from_fn(|c| (m[c][r] * 1e9).round() / 1e9 + 0.0))
+}
+
+fn vec_of(v: [f64; 3]) -> Vec3 {
+    Vec3::new(v[0], v[1], v[2])
+}
+
+/// A part's connection frame (its own coordinates) as a placement: x, y = z × x, z, origin.
+fn connection_mat(c: &HardwareConnection) -> std::result::Result<Mat, String> {
+    let c = frame(c)?;
+    let (z, x) = (vec_of(c.z), vec_of(c.x));
+    Ok(frame_mat(vec_of(c.origin), x, z.cross(x), z))
+}
+
+/// Where a part goes on a slot placed at `p`: its occurrence's world placement `T_B = S · Flip ·
+/// F_b⁻¹`, the joint's `T_B · F_b = T_A · F_a · M(q) · Flip` with `S = T_A · F_a · M(q)` the slot's
+/// frame and no turn or offset: the connection x along the slot's x, its z against the slot's z
+/// (along it when the slot flips).
+fn part_placement(p: &Placement, flip: bool, connection: &Mat) -> Option<Mat> {
+    let slot = frame_mat(p.origin, p.x, p.y, p.z);
+    let mate = if flip { IDENTITY } else { MATED };
+    Some(mat_mul(&mat_mul(&slot, &mate), &mat_inverse(connection)?))
+}
+
+/// The slot list's `placed` as kept (none yet: empty). Refused when it is not a list.
+fn raw_placed(store: &Map<String, Value>, cmd: &str) -> Result<Vec<Value>> {
+    match store.get("placed") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(placed)) => Ok(placed.clone()),
+        Some(_) => Err(bad(cmd, "the design's placed parts (`placed`) are not a list")),
+    }
+}
+
+/// The parts placed on slots: the entries of `placed` this version reads.
+fn placements(store: &Map<String, Value>) -> Vec<HardwarePlacement> {
+    store
+        .get("placed")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect())
+        .unwrap_or_default()
+}
+
+/// Whether a placement's occurrence is still in the design: deleted by hand, it holds its slot no
+/// more.
+fn live(s: &Session, e: &HardwarePlacement) -> bool {
+    s.doc.occurrences.iter().any(|o| o.id == e.occurrence && o.component == e.component)
+}
+
+/// Whether two part paths name the same file (any case on Windows).
+fn same_file(a: &str, b: &str) -> bool {
+    let (a, b) = (native(a), native(b));
+    if cfg!(windows) { a.to_lowercase() == b.to_lowercase() } else { a == b }
+}
+
+/// Run another command's body inside this one: the whole placement is one undo step, and when a
+/// later step fails the design goes back as it was.
+fn nested(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
+    let spec = super::find_command(id).ok_or_else(|| crate::EngineError::UnknownCommand(id.to_string()))?;
+    let r = spec.run_nested(s, p)?;
+    s.refresh();
+    Ok(r)
+}
+
+/// Keep `placed` in the slot list; the slots and the other keys stay as they are.
+fn save_placed(s: &mut Session, mut store: Map<String, Value>, placed: Vec<Value>, cmd: &str) -> Result<()> {
+    let slots = raw_slots(&store);
+    store.insert("placed".into(), Value::Array(placed));
+    save_slots(s, store, slots, cmd)
+}
+
+/// Slot `id` as kept and where it comes to now; refused unless it can take a part now.
+fn usable_slot(s: &Session, store: &Map<String, Value>, id: &str, cmd: &str) -> Result<(HardwareSlot, Worked)> {
+    let raw = raw_slots(store).into_iter().find(|v| raw_id(v) == Some(id)).ok_or_else(|| bad(cmd, format!("no placement slot `{id}`")))?;
+    let slot: HardwareSlot = serde_json::from_value(raw).map_err(|e| bad(cmd, format!("the placement slot `{id}` can't be read: {e}")))?;
+    let worked = work_out(s, &slot).map_err(|e| bad(cmd, format!("the placement slot `{id}` can't take a part now: {e}")))?;
+    let active = match slot.when.as_deref() {
+        Some(w) => condition(s, w).map_err(|e| bad(cmd, format!("the placement slot `{id}` can't take a part now: when: {e}")))?,
+        None => true,
+    };
+    if !active {
+        return Err(bad(cmd, format!("the placement slot `{id}` is not in use now: its condition does not hold")));
+    }
+    Ok((slot, worked))
+}
+
+/// Whether placements `a` and `b` differ: a turn by more than a micro-radian or a shift by more
+/// than a micrometre.
+fn moved(a: &Mat, b: &Mat) -> bool {
+    (0..3).any(|c| (0..3).any(|r| (a[c][r] - b[c][r]).abs() > 1e-6)) || column(a, 3).dist(column(b, 3)) > 1e-3
+}
+
+fn place_part(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "hardware.place";
+    let r: HardwarePlaceParams = serde_json::from_value(p.clone()).map_err(|e| bad(cmd, e.to_string()))?;
+    let part_path = native(&r.path);
+    path(cmd, "part", &part_path)?;
+    let part = Path::new(&part_path);
+    if kind_of(part) != Some(HardwareKind::Step) {
+        return Err(bad(cmd, "the part must be a .step or .stp file"));
+    }
+    if !std::fs::metadata(part).is_ok_and(|m| m.is_file()) {
+        return Err(bad(cmd, format!("no part file `{part_path}`")));
+    }
+    let store = store(s, cmd)?;
+    let placed = raw_placed(&store, cmd)?;
+    let (slot, worked) = usable_slot(s, &store, r.slot.trim(), cmd)?;
+    let taken = placements(&store);
+    if taken.iter().any(|e| e.slot == slot.id && live(s, e)) {
+        return Err(bad(cmd, TAKEN));
+    }
+    let card = read_card(&card_path(part)).map_err(|e| bad(cmd, format!("the part's data card can't be read: {e}")))?;
+    let connection = card.as_ref().and_then(|c| c.connection.as_ref()).ok_or_else(|| bad(cmd, NO_CONNECTION))?;
+    let f_b = connection_mat(connection).map_err(|e| bad(cmd, e))?;
+    let name = card.as_ref().and_then(|c| c.part_no.as_deref()).map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned).unwrap_or_else(|| {
+        part.file_stem().map(|stem| stem.to_string_lossy().trim().to_owned()).filter(|n| !n.is_empty()).unwrap_or_else(|| "Part".to_owned())
+    });
+    let target = part_placement(&worked.placement, slot.flip, &f_b).ok_or_else(|| bad(cmd, "the part's connection frame has no inverse"))?;
+    let reuse = taken.iter().find(|e| same_file(&e.path, &part_path) && live(s, e)).map(|e| e.component);
+    let mut out = HardwarePlaced {
+        slot: slot.id.clone(),
+        path: part_path.clone(),
+        name: name.clone(),
+        transform: rows(&target),
+        frame: worked.frame.clone(),
+        component: None,
+        occurrence: None,
+        joint: None,
+        reused: reuse.is_some(),
+        preview: r.preview,
+        warnings: Vec::new(),
+        param_warnings: Vec::new(),
+    };
+    if r.preview {
+        return reply(cmd, out);
+    }
+    // The same file placed again is another occurrence of its component: one definition, read once.
+    let (component, occurrence) = match reuse {
+        Some(component) => {
+            let made = nested(s, "occurrence.copy", &json!({ "component": component }))?;
+            (component, made["occurrence"].as_u64().ok_or_else(|| bad(cmd, "the copy has no occurrence"))?)
+        }
+        None => {
+            let made = nested(s, "file.insert_step", &json!({ "path": part_path, "name": name }))?;
+            let component = made["component"].as_u64().ok_or_else(|| bad(cmd, "the inserted part has no component"))?;
+            (component, made["occurrence"].as_u64().ok_or_else(|| bad(cmd, "the inserted part has no occurrence"))?)
+        }
+    };
+    // A part brought into a design without bodies of its own comes in grounded: the joint places it.
+    if s.doc.occurrences.iter().any(|o| o.id == occurrence && o.grounded)
+        && let Some(o) = s.doc_mut().occurrences.iter_mut().find(|o| o.id == occurrence)
+    {
+        o.grounded = false;
+    }
+    // Side b: the connection frame on the part's top occurrence, given in the world (a face
+    // origin could not reach the bodies of a part that has several).
+    let world = mat_mul(&joints::occurrence_world(&s.doc, occurrence), &f_b);
+    let at = |i: usize| {
+        let v = column(&world, i);
+        [v.x, v.y, v.z]
+    };
+    let b = json!({"occurrence": occurrence, "frame": {"origin": at(3), "z": at(2), "x": at(0)}});
+    let made = nested(
+        s,
+        "joint.create",
+        &json!({"type": "planar", "name": format!("{}: {name}", slot.label), "a": worked.joint_a, "b": b, "values": worked.values,
+            "limits": worked.limits, "flip": slot.flip, "offset": 0, "angle": 0, "quiet": true}),
+    )?;
+    let joint = made["joint"].as_u64().ok_or_else(|| bad(cmd, "the joint made has no id"))?;
+    out.warnings = made["warnings"].as_array().map(|w| w.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default();
+    if moved(&joints::occurrence_world(&s.doc, occurrence), &target) {
+        out.warnings.push("the part did not come to the slot: another joint or a grounded part holds it".into());
+    }
+    // Placements whose part was deleted by hand go; those this version can't read stay.
+    let mut kept: Vec<Value> =
+        placed.into_iter().filter(|v| serde_json::from_value::<HardwarePlacement>(v.clone()).ok().is_none_or(|e| live(s, &e))).collect();
+    let entry = HardwarePlacement { slot: slot.id.clone(), path: part_path, component, occurrence, joint };
+    kept.push(serde_json::to_value(&entry).map_err(|e| bad(cmd, e.to_string()))?);
+    save_placed(s, store, kept, cmd)?;
+    out.component = Some(component);
+    out.occurrence = Some(occurrence);
+    out.joint = Some(joint);
+    reply(cmd, out)
+}
+
+fn unplace_part(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "hardware.unplace";
+    let r: HardwareUnplaceParams = serde_json::from_value(p.clone()).map_err(|e| bad(cmd, e.to_string()))?;
+    let store = store(s, cmd)?;
+    let mut placed = raw_placed(&store, cmd)?;
+    let on_slot = |v: &Value| serde_json::from_value::<HardwarePlacement>(v.clone()).ok().filter(|e| e.slot == r.slot);
+    // The part there now first; else one deleted by hand, whose entry goes.
+    let index = placed
+        .iter()
+        .position(|v| on_slot(v).is_some_and(|e| live(s, &e)))
+        .or_else(|| placed.iter().position(|v| on_slot(v).is_some()))
+        .ok_or_else(|| bad(cmd, format!("nothing is placed on slot `{}`", r.slot)))?;
+    let entry = placed.get(index).and_then(on_slot).ok_or_else(|| bad(cmd, format!("nothing is placed on slot `{}`", r.slot)))?;
+    if s.doc.assembly.joints.iter().any(|j| j.id == entry.joint) {
+        nested(s, "joint.delete", &json!({ "joint": entry.joint }))?;
+    }
+    let mut component_removed = false;
+    if live(s, &entry) {
+        // The last occurrence takes its component (and the Import feature) with it.
+        let last = s.doc.occurrences.iter().filter(|o| o.component == entry.component).count() == 1;
+        nested(s, "selection.delete", &json!({ "occurrences": [entry.occurrence] }))?;
+        component_removed = last && !s.doc.components.iter().any(|c| c.id == entry.component);
+    }
+    placed.remove(index);
+    save_placed(s, store, placed, cmd)?;
+    reply(cmd, HardwareUnplaced { slot: entry.slot, occurrence: entry.occurrence, joint: entry.joint, component_removed, param_warnings: Vec::new() })
 }
 
 #[cfg(test)]

@@ -6,7 +6,9 @@
 //! attaches (`hardware_connection`). Profiles and DXF sections wait for a later step. The
 //! ribbon's Hardware Library (`ui.start` of `hardware.library.list`) opens it. Below the parts,
 //! the Placement slots section lists the design's placement slots and adds, edits and deletes
-//! them (`hardware_slot`); while the panel is open the view shows them.
+//! them (`hardware_slot`); while the panel is open the view shows them. Clicking a hardware part
+//! whose card has a connection point arms placing it on those slots (`hardware_place`); clicking
+//! it again ends that.
 //!
 //! Pictures are made the way Home makes a recent design's (`home::file_picture`, cached on disk by
 //! the file's path, size and time), off the window thread and one at a time, only for rows on
@@ -51,6 +53,12 @@ pub struct HardwareLibrary {
     pictures: Pictures,
     /// The design's placement slots (`hardware_slot`), listed again as the design changes.
     pub(crate) slots: crate::hardware_slot::Listed,
+    /// The group the last slot saved went in: a new slot starts there.
+    pub(crate) last_group: Option<String>,
+    /// The part being placed on slots (`hardware_place`).
+    pub(crate) placing: Option<crate::hardware_place::Placing>,
+    /// The parts' ghosts made for placing them, by file.
+    pub(crate) ghosts: crate::hardware_place::Ghosts,
 }
 
 impl Drop for HardwareLibrary {
@@ -149,17 +157,36 @@ fn groups(d: &HardwareLibrary) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The selected part's group, as last listed.
+fn selected_group(d: &HardwareLibrary) -> Option<String> {
+    let selected = d.selected.as_deref()?;
+    let listed = d.listing.as_ref().and_then(|(_, result)| result.as_ref().ok())?;
+    let part = listed["parts"].as_array()?.iter().find(|p| p["path"].as_str() == Some(selected))?;
+    part["group"].as_str().filter(|g| !g.is_empty()).map(str::to_owned)
+}
+
 /// What the Placement slots section asked for.
 fn slot_action(app: &mut SolveApp, d: &mut HardwareLibrary, action: crate::hardware_slot::SlotAction) {
     use crate::hardware_slot::SlotAction;
     match action {
-        SlotAction::Add => d.error = crate::hardware_slot::start(app, None, groups(d)).err(),
+        SlotAction::Add => {
+            d.placing = None;
+            // The selected part's group, else the last one a slot went in.
+            let group = selected_group(d).or_else(|| d.last_group.clone());
+            d.error = crate::hardware_slot::start(app, None, groups(d), group.as_deref()).err();
+        }
         SlotAction::Edit(id) => {
             if let Some(slot) = d.slots.slots.iter().find(|s| s.id == id).cloned() {
-                d.error = crate::hardware_slot::start(app, Some(&slot), groups(d)).err();
+                d.placing = None;
+                d.error = crate::hardware_slot::start(app, Some(&slot), groups(d), None).err();
             }
         }
-        SlotAction::Delete(id) => d.error = app.run("hardware.slot.delete", json!({ "id": id })).err(),
+        SlotAction::Delete(id) => {
+            d.error = app.run("hardware.slot.delete", json!({ "id": id })).err();
+            if d.error.is_none() {
+                app.set_status(tr("hardware_slot.deleted"), false);
+            }
+        }
         SlotAction::Select(id) => {
             d.slots.selected = if d.slots.selected.as_deref() == Some(id.as_str()) { None } else { Some(id) };
             d.error = None;
@@ -208,13 +235,30 @@ fn define_connection(app: &mut SolveApp, d: &mut HardwareLibrary, part: &Value) 
     if !insertable(part) {
         return;
     }
+    d.placing = None;
     d.error = crate::hardware_connection::start(app, text(part, "path"), insert_name(part)).err();
 }
 
-/// What a row asked for.
+/// What a row asked for: select it (and place it on slots), click it again (placing it starts
+/// or ends), or insert it.
 enum RowAction {
-    Select(String),
+    Select(Value),
+    Again(Value),
     Insert(Value),
+}
+
+/// A click on a part's row: placing a hardware part on slots starts, or, when that part is the
+/// one being placed, ends. A part without a connection point is not placed: the panel's note asks
+/// for one (Connection point… is in the footer).
+fn toggle_placing(app: &mut SolveApp, d: &mut HardwareLibrary, part: &Value) {
+    if crate::hardware_place::armed_for(d, text(part, "path")) {
+        d.placing = None;
+        return;
+    }
+    d.placing = None;
+    if insertable(part) && part["card"]["connection"].is_object() {
+        d.error = crate::hardware_place::arm(app, d, part).err();
+    }
 }
 
 /// What a footer button asked for.
@@ -248,6 +292,7 @@ fn body(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
     let search_id = ui.make_persistent_id("hardware-library-search");
     let response = crate::ui_kit::search_field(ui, search_id, &mut d.search, tr("hardware_library.search"));
     crate::panel_runtime::register_content_focus(ui.ctx(), &response);
+    placing_note(ui, d, selected.as_ref());
     ui.separator();
     let before = ui.cursor().top();
     let needle = d.search.trim().to_lowercase();
@@ -280,9 +325,14 @@ fn body(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
         slot_action(app, d, action);
     }
     match row {
-        Some(RowAction::Select(path)) => {
-            d.selected = Some(path);
+        Some(RowAction::Select(part)) => {
+            d.selected = Some(text(&part, "path").to_owned());
             d.error = None;
+            toggle_placing(app, d, &part);
+        }
+        Some(RowAction::Again(part)) => {
+            d.error = None;
+            toggle_placing(app, d, &part);
         }
         Some(RowAction::Insert(part)) => insert(app, d, &part),
         None => {}
@@ -295,6 +345,23 @@ fn body(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
     let natural =
         (before - top) + scroll.content_size.y + (ui.cursor().top() - after).max(0.0) + footer.response.rect.height() + ui.spacing().item_spacing.y;
     crate::panel_runtime::report_content_extent(ui, top, natural, false);
+}
+
+/// While a part is placed: what to do, and that no slot takes it when none does. A selected
+/// hardware part without a connection point: that it needs one first.
+fn placing_note(ui: &mut egui::Ui, d: &HardwareLibrary, selected: Option<&Value>) {
+    let t = Tokens::get();
+    let Some(placing) = &d.placing else {
+        if selected.is_some_and(|part| insertable(part) && !part["card"]["connection"].is_object()) {
+            ui.label(RichText::new(tr("hardware_place.no_connection")).small().color(t.warning));
+        }
+        return;
+    };
+    let text = solidcraft_ui_text::format("hardware_place.armed", &[("part", placing.name.as_str())]);
+    ui.label(RichText::new(text).color(t.accent));
+    if !d.slots.slots.iter().any(|s| crate::hardware_place::free(s, &placing.group)) {
+        ui.label(RichText::new(tr("hardware_place.no_slot")).small().color(t.warning));
+    }
 }
 
 /// The folder: its path, Choose folder… and Refresh.
@@ -409,6 +476,7 @@ fn row(ui: &mut egui::Ui, d: &mut HardwareLibrary, part: &Value, show_group: boo
     let path = text(part, "path");
     let name = text(part, "name");
     let selected = d.selected.as_deref() == Some(path);
+    let placing = crate::hardware_place::armed_for(d, path);
     let height = THUMB.y + 2.0 * t.space_4;
     let (rect, response) = ui.allocate_exact_size(vec2(crate::ui_kit::dimension(ui.available_width()), height), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, name));
@@ -424,6 +492,10 @@ fn row(ui: &mut egui::Ui, d: &mut HardwareLibrary, part: &Value, show_group: boo
         painter.rect_filled(rect, t.radius_sm, t.selected_bg);
     } else if response.hovered() {
         painter.rect_filled(rect, t.radius_sm, t.hover);
+    }
+    // The part being placed on slots.
+    if placing {
+        painter.rect_stroke(rect.shrink(1.0), t.radius_sm, egui::Stroke::new(1.5, t.accent), egui::StrokeKind::Inside);
     }
     let thumb = egui::Rect::from_min_size(rect.min + vec2(t.space_4, t.space_4), THUMB);
     let kind = text(part, "kind");
@@ -474,7 +546,9 @@ fn row(ui: &mut egui::Ui, d: &mut HardwareLibrary, part: &Value, show_group: boo
     if response.double_clicked() && insertable(part) {
         Some(RowAction::Insert(part.clone()))
     } else if response.clicked() && !selected {
-        Some(RowAction::Select(path.to_owned()))
+        Some(RowAction::Select(part.clone()))
+    } else if response.clicked() {
+        Some(RowAction::Again(part.clone()))
     } else {
         None
     }
@@ -634,7 +708,9 @@ mod tests {
         h.step(&json!({"widget": "sash-70"})).unwrap();
         h.frames(2);
         let d = h.app.hardware_library.as_ref().unwrap();
-        assert_eq!(d.selected.as_deref(), Some(folder.path("Profil/sash-70.dxf").as_str()));
+        // The listing gives paths with the platform's own separators.
+        let sash = folder.0.join("Profil").join("sash-70.dxf").to_string_lossy().into_owned();
+        assert_eq!(d.selected.as_deref(), Some(sash.as_str()));
         let undo = h.app.session.undo.len();
         // The button is disabled for it: a click (if the step finds it at all) does nothing.
         let _ = h.step(&json!({"widget": "Insert into design"}));

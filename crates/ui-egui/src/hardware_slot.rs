@@ -12,7 +12,8 @@
 //! While the library is open every slot is drawn in the view as a dot (the theme's accent, dimmed
 //! while its condition does not hold), its name shown on hover; the slot being edited or picked
 //! in the list is ringed. [`markers`] and [`marker_at`] give the dots' screen positions and the
-//! one under a point, for a later step that places parts by clicking them.
+//! one under a point; `hardware_place` draws the slots a part goes in instead while it is placed.
+//! Slots at the same spot (a corner's corner drive and its hinge) share one name tag on hover.
 
 use egui::{RichText, Stroke, vec2};
 use serde_json::{Map, Value, json};
@@ -36,6 +37,8 @@ pub(crate) const MARKER_REACH: f32 = 8.0;
 /// A marker's radius, and the ring round the one being edited or picked in the list.
 const MARKER_RADIUS: f32 = 4.0;
 const RING_RADIUS: f32 = 8.0;
+/// Markers this near each other (points) are at one spot: one name tag names them all.
+const SAME_SPOT: f32 = 3.0;
 
 /// A slot as the panel and the view show it, from `hardware.slot.list`.
 #[derive(Clone, Debug, PartialEq)]
@@ -54,6 +57,8 @@ pub(crate) struct Slot {
     pub error: Option<String>,
     /// Where the part's connection frame goes (world): `None` with `error`.
     pub frame: Option<Frame>,
+    /// The part `hardware.place` put there: its occurrence and its joint.
+    pub placed: Option<(u64, u64)>,
 }
 
 /// The design's slots, listed again whenever the design changes.
@@ -95,6 +100,7 @@ fn slot_of(v: &Value) -> Option<Slot> {
         active: v["active"].as_bool().unwrap_or(false),
         error: text("error"),
         frame: frame_of(&v["frame"]),
+        placed: v["placed"]["occurrence"].as_u64().zip(v["placed"]["joint"].as_u64()),
     })
 }
 
@@ -271,10 +277,10 @@ pub(crate) fn active(app: &SolveApp) -> bool {
     app.hardware_slot.is_some()
 }
 
-/// Start adding a slot (`slot` `None`) or editing `slot`, its Group list from the library's
-/// `groups`. Refused while a sketch, an edit in place or a connection point is open; an open
-/// dialog or tool is closed first.
-pub(crate) fn start(app: &mut SolveApp, slot: Option<&Slot>, mut groups: Vec<String>) -> Result<(), String> {
+/// Start adding a slot (`slot` `None`, its group `group` when that is one of them) or editing
+/// `slot`, its Group list from the library's `groups`. Refused while a sketch, an edit in place or
+/// a connection point is open; an open dialog or tool is closed first.
+pub(crate) fn start(app: &mut SolveApp, slot: Option<&Slot>, mut groups: Vec<String>, group: Option<&str>) -> Result<(), String> {
     if active(app) {
         return Ok(());
     }
@@ -306,7 +312,7 @@ pub(crate) fn start(app: &mut SolveApp, slot: Option<&Slot>, mut groups: Vec<Str
         },
         None => Fields {
             label: String::new(),
-            group: groups.first().cloned().unwrap_or_default(),
+            group: group.filter(|g| groups.iter().any(|x| x == g)).map(str::to_owned).or_else(|| groups.first().cloned()).unwrap_or_default(),
             along: "0".to_owned(),
             middle: true,
             across: "0".to_owned(),
@@ -419,6 +425,8 @@ fn save(app: &mut SolveApp) -> Result<(), String> {
             finish(app, &pick);
             if let (Some(d), Some(id)) = (app.hardware_library.as_mut(), r["slot"]["id"].as_str()) {
                 d.slots.selected = Some(id.to_owned());
+                // The next new slot starts in this group.
+                d.last_group = r["slot"]["group"].as_str().filter(|g| !g.is_empty()).map(str::to_owned).or(d.last_group.take());
             }
             app.set_status(tr("hardware_slot.saved"), false);
             Ok(())
@@ -524,7 +532,7 @@ fn card(ui: &mut egui::Ui, pick: &mut Pick) {
     }
     ui_kit::row(ui, tr("hardware_slot.angle"), |ui| ui_kit::dropdown(ui, "hardware_slot_angle", &mut f.angle, &ANGLE_LABELS));
     ui_kit::checkbox(ui, tr("hardware_slot.flip"), &mut f.flip);
-    ui_kit::row(ui, tr("hardware_slot.when"), |ui| ui_kit::checked_field(ui, &mut f.when, "FFH > 1200 mm", flag_when).0);
+    ui_kit::row(ui, tr("hardware_slot.when"), |ui| ui_kit::checked_field(ui, &mut f.when, tr("hardware_slot.when_hint"), flag_when).0);
     if let Some(problem) = pick.problem() {
         ui_kit::status_line(ui, &problem, ui_kit::StatusTone::Error);
     } else if matches!(&pick.preview, Some((_, Ok((_, false))))) {
@@ -546,6 +554,12 @@ pub(crate) fn section(ui: &mut egui::Ui, listed: &Listed, busy: bool) -> Option<
     let t = Tokens::get();
     let mut action = None;
     crate::ui_kit::section_count_as_written(ui, "hardware-library-slots", tr("hardware_slot.title"), true, Some(listed.slots.len()), |ui| {
+        // First, so it shows without scrolling past the slots.
+        let add = crate::ui_kit::button(ui, tr("hardware_slot.add"), crate::ui_kit::Button::Enabled(!busy));
+        crate::panel_runtime::register_content_focus(ui.ctx(), &add);
+        if add.clicked() && !busy {
+            action = Some(SlotAction::Add);
+        }
         if let Some(error) = &listed.error {
             ui.label(RichText::new(error.as_str()).color(t.error));
         }
@@ -560,11 +574,6 @@ pub(crate) fn section(ui: &mut egui::Ui, listed: &Listed, busy: bool) -> Option<
                     action = Some(a);
                 }
             }
-        }
-        let add = crate::ui_kit::button(ui, tr("hardware_slot.add"), crate::ui_kit::Button::Enabled(!busy));
-        crate::panel_runtime::register_content_focus(ui.ctx(), &add);
-        if add.clicked() && !busy {
-            action = Some(SlotAction::Add);
         }
     });
     action
@@ -617,7 +626,8 @@ fn slot_row(ui: &mut egui::Ui, slot: &Slot, selected: bool, busy: bool) -> Optio
 /// list ringed, a name on hover), and the card's preview triad.
 pub(crate) fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj) {
     let t = Tokens::get();
-    if let Some(d) = &app.hardware_library {
+    // While a part is placed, `hardware_place` draws the slots it can go in.
+    if let Some(d) = app.hardware_library.as_ref().filter(|d| d.placing.is_none()) {
         let listed = &d.slots;
         let marks = markers(listed, proj);
         let editing = app.hardware_slot.as_ref().and_then(|p| p.editing.as_deref());
@@ -629,15 +639,24 @@ pub(crate) fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj) {
             }
         }
         let hover = painter.ctx().pointer_hover_pos().filter(|p| !crate::shell::covered(app, *p));
-        if let Some(m) = hover.and_then(|p| marker_at(&marks, p))
-            && let Some(slot) = listed.slots.iter().find(|s| s.id == m.id)
-        {
-            let mut text = format!("{} · {}", slot.label, slot.along);
-            if !slot.active {
-                text.push_str(" — ");
-                text.push_str(slot.error.as_deref().unwrap_or(tr("hardware_slot.inactive")));
+        if let Some(m) = hover.and_then(|p| marker_at(&marks, p)) {
+            // Slots at the same spot (a corner drive and a hinge at one corner) share the tag.
+            let text: Vec<String> = marks
+                .iter()
+                .filter(|o| o.at.distance(m.at) <= SAME_SPOT)
+                .filter_map(|o| listed.slots.iter().find(|s| s.id == o.id))
+                .map(|slot| {
+                    let mut text = format!("{} · {}", slot.label, slot.along);
+                    if !slot.active {
+                        text.push_str(" — ");
+                        text.push_str(slot.error.as_deref().unwrap_or(tr("hardware_slot.inactive")));
+                    }
+                    text
+                })
+                .collect();
+            if !text.is_empty() {
+                name_tag(painter, m.at, &text.join(" / "));
             }
-            name_tag(painter, m.at, &text);
         }
     }
     if let Some(pick) = &app.hardware_slot {
@@ -656,7 +675,7 @@ pub(crate) fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj) {
 }
 
 /// A slot's name beside its dot, on the panel colour.
-fn name_tag(painter: &egui::Painter, at: egui::Pos2, text: &str) {
+pub(crate) fn name_tag(painter: &egui::Painter, at: egui::Pos2, text: &str) {
     let t = Tokens::get();
     let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(t.font_small), t.text);
     let pad = vec2(t.space_4, t.space_2);
@@ -688,6 +707,7 @@ mod tests {
                     active: *active,
                     error: None,
                     frame: Some(Frame { origin: *at, z: Vec3::X, x: Vec3::Z }),
+                    placed: None,
                 })
                 .collect(),
             ..Listed::default()
@@ -747,7 +767,7 @@ mod tests {
             .expect("the edge up the outer face");
         let undo = app.session.undo.len();
         app.ui.pick_components = true;
-        start(&mut app, None, vec!["Köşe aktarma".into(), "Makas ve kol".into()]).unwrap();
+        start(&mut app, None, vec!["Köşe aktarma".into(), "Makas ve kol".into()], None).unwrap();
         assert!(active(&app) && !app.ui.pick_components, "a click picks faces and edges while picking");
         app.session.selection = vec![Sel::Face { body: body.name.clone(), index: face, point: Vec3::new(900.0, 35.0, 600.0) }];
         take_picks(&mut app);
@@ -777,7 +797,7 @@ mod tests {
     fn cancel_changes_nothing() {
         let mut app = app();
         let (undo, doc) = (app.session.undo.len(), app.session.doc.clone());
-        start(&mut app, None, Vec::new()).unwrap();
+        start(&mut app, None, Vec::new(), None).unwrap();
         cancel(&mut app);
         assert!(!active(&app));
         assert_eq!(app.session.undo.len(), undo);

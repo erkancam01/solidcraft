@@ -1,8 +1,9 @@
 use serde_json::{Value, json};
 
 use super::{
-    HardwareCardSet, HardwareCardSetParams, HardwareLibrary, HardwareLibraryListParams, HardwareSlotAddParams, HardwareSlotDeleteParams,
-    HardwareSlotDeleted, HardwareSlotEditParams, HardwareSlotList, HardwareSlotListParams, HardwareSlotSet,
+    HardwareCardSet, HardwareCardSetParams, HardwareLibrary, HardwareLibraryListParams, HardwarePlaceParams, HardwarePlaced, HardwareSlotAddParams,
+    HardwareSlotDeleteParams, HardwareSlotDeleted, HardwareSlotEditParams, HardwareSlotList, HardwareSlotListParams, HardwareSlotSet,
+    HardwareUnplaceParams, HardwareUnplaced,
 };
 use crate::Session;
 use crate::schema::tests::{assert_keys, assert_strict_keeps_todays_errors, conforms};
@@ -45,6 +46,8 @@ fn schemas_and_the_key_check_agree() {
     assert_keys(input_schema_for::<HardwareSlotEditParams>(), &slot);
     assert_keys(input_schema_for::<HardwareSlotDeleteParams>(), &["id"]);
     assert_keys(input_schema_for::<HardwareSlotListParams>(), &["group"]);
+    assert_keys(input_schema_for::<HardwarePlaceParams>(), &["path", "preview", "slot"]);
+    assert_keys(input_schema_for::<HardwareUnplaceParams>(), &["slot"]);
 }
 
 /// A sash profile, x 838 … 900, y 0 … 70, z 0 … 1200, for the slot commands.
@@ -65,7 +68,8 @@ fn slot_commands_reply_with_their_schemas() {
         assert!(conforms(schema, schema, r), "{r} doesn't match {schema}");
         assert!(r.get("param_warnings").is_none(), "{r}");
     };
-    let (set, listed, deleted) = (output_schema_for::<HardwareSlotSet>(), output_schema_for::<HardwareSlotList>(), output_schema_for::<HardwareSlotDeleted>());
+    let (set, listed, deleted) =
+        (output_schema_for::<HardwareSlotSet>(), output_schema_for::<HardwareSlotList>(), output_schema_for::<HardwareSlotDeleted>());
     let add = json!({"label": "Kol", "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600], "along": 250});
     let mut preview = add.clone();
     preview["preview"] = json!(true);
@@ -94,6 +98,9 @@ fn strict_keeps_todays_errors() {
         ("hardware.slot.add", json!({"label": "A", "group": "", "edge": [5, 5, 5], "corner": [0, 0, 0], "angle": 45})),
         ("hardware.slot.edit", json!({"id": "missing"})),
         ("hardware.slot.delete", json!({"id": "missing"})),
+        ("hardware.place", json!({"slot": "missing", "path": folder.path("Köşe aktarma/corner.STEP")})),
+        ("hardware.place", json!({"slot": "missing", "path": ""})),
+        ("hardware.unplace", json!({"slot": "missing"})),
     ]);
 }
 
@@ -128,4 +135,32 @@ fn hardware_commands_reply_with_their_schemas() {
             s.execute("hardware.library.list", &json!({"folder": folder.path(""), "fldr": 1})).err().map(|e| e.to_string()).unwrap_or_default();
         assert!(error.contains("fldr"), "{level:?}: {error}");
     }
+}
+
+/// Placing a part on a slot and taking it away reply as their output schemas say, in Warn without
+/// warnings.
+#[test]
+fn place_commands_reply_with_their_schemas() {
+    let folder = Folder::new("place");
+    let part = folder.path("Köşe aktarma/cylinder.step");
+    std::fs::copy(format!("{}/../../tests/step-conformance/cylinder.step", env!("CARGO_MANIFEST_DIR")), &part).unwrap();
+    std::fs::write(folder.path("Köşe aktarma/cylinder.json"), r#"{"connection": {"origin": [0, 0, 0], "z": [0, 0, -1], "x": [1, 0, 0]}}"#).unwrap();
+    let mut s = sash();
+    s.param_check = ParamCheck::Warn;
+    let run = |s: &mut Session, id: &str, p: Value| s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"));
+    let matches = |schema: &schemars::Schema, r: &Value| {
+        let schema = schema.as_value();
+        assert!(conforms(schema, schema, r), "{r} doesn't match {schema}");
+        assert!(r.get("param_warnings").is_none(), "{r}");
+    };
+    run(
+        &mut s,
+        "hardware.slot.add",
+        json!({"label": "Kol", "group": "Köşe aktarma", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600]}),
+    );
+    let placed = output_schema_for::<HardwarePlaced>();
+    matches(&placed, &run(&mut s, "hardware.place", json!({"slot": "kol", "path": part, "preview": true})));
+    matches(&placed, &run(&mut s, "hardware.place", json!({"slot": "kol", "path": part})));
+    matches(&output_schema_for::<HardwareSlotList>(), &run(&mut s, "hardware.slot.list", json!({})));
+    matches(&output_schema_for::<HardwareUnplaced>(), &run(&mut s, "hardware.unplace", json!({"slot": "kol"})));
 }

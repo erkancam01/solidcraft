@@ -575,3 +575,158 @@ fn a_slot_that_breaks_its_rules_is_refused_and_one_gone_bad_is_an_error_on_it_on
     assert!(s.execute("hardware.slot.list", &json!({})).is_err());
     assert!(s.execute("hardware.slot.add", &ok).is_err());
 }
+
+// ---- Placing parts ----
+
+/// A part from the STEP corpus (`tests/step-conformance`) copied into the library's "Makas ve
+/// kol" group, with a card; with `connection`, its connection is the cylinder's bottom face (the
+/// corpus cylinders stand on the origin): z down out of it, x along +X.
+fn part(lib: &Library, name: &str, connection: bool) -> String {
+    let from = format!("{}/../../tests/step-conformance/{name}.step", env!("CARGO_MANIFEST_DIR"));
+    let to = lib.0.join(format!("Makas ve kol/{name}.step"));
+    std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+    std::fs::copy(&from, &to).unwrap();
+    let mut card = json!({"part_no": format!("P-{name}")});
+    if connection {
+        card["connection"] = json!({"origin": [0, 0, 0], "z": [0, 0, -1], "x": [1, 0, 0]});
+    }
+    std::fs::write(lib.0.join(format!("Makas ve kol/{name}.json")), card.to_string()).unwrap();
+    to.to_string_lossy().into_owned()
+}
+
+/// The part's connection frame in the world as its occurrence is placed now: origin, x, z.
+fn connection_now(s: &Session, occurrence: u64) -> (Vec3, Vec3, Vec3) {
+    let c = HardwareConnection { origin: [0.0; 3], z: [0.0, 0.0, -1.0], x: [1.0, 0.0, 0.0] };
+    let m = mat_mul(&joints::occurrence_world(&s.doc, occurrence), &connection_mat(&c).unwrap());
+    (column(&m, 3), column(&m, 0), column(&m, 2))
+}
+
+/// A row-major 4x4 matrix from a reply, as a placement.
+fn placement_of(v: &Value) -> Mat {
+    let rows: Vec<Vec<f64>> = serde_json::from_value(v.clone()).unwrap();
+    std::array::from_fn(|c| std::array::from_fn(|r| rows[r][c]))
+}
+
+fn slot_frame(v: &Value) -> (Vec3, Vec3, Vec3) {
+    (v3(&v["frame"]["origin"]), v3(&v["frame"]["x"]), v3(&v["frame"]["z"]))
+}
+
+#[test]
+fn a_part_placed_on_a_slot_sits_on_it_and_follows_its_parameters() {
+    let lib = Library::new();
+    // One cylinder placed twice: a top occurrence holding two, joined by rigid joints.
+    let path = part(&lib, "cylinder_twice", true);
+    let mut s = sash();
+    let slot = |label: &str, along: &str, angle: u16| json!({"label": label, "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600], "along": along, "angle": angle});
+    s.execute("hardware.slot.add", &slot("Kol", "KOL", 0)).unwrap();
+    s.execute("hardware.slot.add", &slot("Kol 2", "KOL - 300 mm", 90)).unwrap();
+    let (undo, components) = (s.undo.len(), s.doc.components.len());
+    let preview = s.execute("hardware.place", &json!({"slot": "kol", "path": path, "preview": true})).unwrap();
+    assert_eq!(
+        (preview["preview"].as_bool(), s.undo.len(), s.doc.components.len()),
+        (Some(true), undo, components),
+        "a preview changes nothing: {preview}"
+    );
+    assert!(preview["occurrence"].is_null() && preview["name"] == "P-cylinder_twice", "{preview}");
+
+    let r = s.execute("hardware.place", &json!({"slot": "kol", "path": path})).unwrap();
+    assert_eq!(s.undo.len(), undo + 1, "one undo step");
+    assert_eq!((r["reused"].as_bool(), r["preview"].as_bool()), (Some(false), Some(false)), "{r}");
+    assert!(r.get("warnings").is_none(), "{r}");
+    let (component, occurrence, joint) = (r["component"].as_u64().unwrap(), r["occurrence"].as_u64().unwrap(), r["joint"].as_u64().unwrap());
+    let j = s.doc.assembly.joints.iter().find(|j| j.id == joint).expect("the joint");
+    assert_eq!((j.kind, j.b.occurrence, j.name.as_str()), (joints::JointKind::Planar, occurrence, "Kol: P-cylinder_twice"));
+    let (o, x, z) = connection_now(&s, occurrence);
+    assert!(near(o, Vec3::new(900.0, 35.0, 600.0)) && near(z, -Vec3::X) && near(x, Vec3::Z), "on the slot, z against its z: {o:?} {x:?} {z:?}");
+    assert!(!moved(&joints::occurrence_world(&s.doc, occurrence), &placement_of(&preview["transform"])), "the preview is where it went: {preview}");
+    let components_placed = s.doc.components.len();
+    assert!(components_placed > components);
+
+    // It follows the parameters the slot uses.
+    s.execute("parameters.change", &json!({"changes": {"KOL": "700 mm", "FFB": "1000 mm"}})).unwrap();
+    let (o, x, z) = connection_now(&s, occurrence);
+    assert!(near(o, Vec3::new(1000.0, 35.0, 700.0)) && near(z, -Vec3::X) && near(x, Vec3::Z), "{o:?} {x:?} {z:?}");
+
+    // The slot is taken now; the list says by what.
+    let e = s.execute("hardware.place", &json!({"slot": "kol", "path": path})).unwrap_err().to_string();
+    assert!(e.contains(TAKEN), "{e}");
+    let listed = slots(&mut s);
+    assert_eq!((listed[0]["placed"]["occurrence"].as_u64(), listed[0]["placed"]["joint"].as_u64()), (Some(occurrence), Some(joint)), "{listed:?}");
+    assert!(listed[1].get("placed").is_none(), "{listed:?}");
+
+    // The same file again: another occurrence of its component, nothing read again.
+    let undo = s.undo.len();
+    let preview = s.execute("hardware.place", &json!({"slot": "kol-2", "path": path, "preview": true})).unwrap();
+    assert_eq!(preview["reused"], true, "{preview}");
+    let r2 = s.execute("hardware.place", &json!({"slot": "kol-2", "path": path})).unwrap();
+    assert_eq!((r2["reused"].as_bool(), r2["component"].as_u64(), s.undo.len()), (Some(true), Some(component), undo + 1), "{r2}");
+    assert_eq!(s.doc.components.len(), components_placed, "one definition");
+    assert_eq!(s.doc.occurrences.iter().filter(|o| o.component == component).count(), 2);
+    let second = r2["occurrence"].as_u64().unwrap();
+    let (o, x, z) = connection_now(&s, second);
+    let (so, sx, sz) = slot_frame(&slots(&mut s)[1]);
+    assert!(near(o, so) && near(x, sx) && near(z, -sz) && near(so, Vec3::new(1000.0, 35.0, 400.0)), "{o:?} {x:?} {z:?}: {so:?} {sx:?} {sz:?}");
+    assert!(!moved(&joints::occurrence_world(&s.doc, second), &placement_of(&preview["transform"])), "{preview}");
+    let (o, ..) = connection_now(&s, occurrence);
+    assert!(near(o, Vec3::new(1000.0, 35.0, 700.0)), "the first stays: {o:?}");
+
+    // Taken away again: one undo step each, the component with the last.
+    let undo = s.undo.len();
+    let u = s.execute("hardware.unplace", &json!({"slot": "kol"})).unwrap();
+    assert_eq!((u["component_removed"].as_bool(), u["occurrence"].as_u64(), s.undo.len()), (Some(false), Some(occurrence), undo + 1), "{u}");
+    assert!(!s.doc.occurrences.iter().any(|o| o.id == occurrence) && !s.doc.assembly.joints.iter().any(|j| j.id == joint));
+    let (o, ..) = connection_now(&s, second);
+    assert!(near(o, Vec3::new(1000.0, 35.0, 400.0)), "the other stays: {o:?}");
+    let u = s.execute("hardware.unplace", &json!({"slot": "kol-2"})).unwrap();
+    assert_eq!((u["component_removed"].as_bool(), s.doc.components.len()), (Some(true), components), "{u}");
+    assert_eq!(s.doc.metadata.get(SLOTS_KEY).unwrap()["placed"], json!([]));
+    assert!(s.execute("hardware.unplace", &json!({"slot": "kol"})).is_err(), "nothing there");
+    // Undo puts the last one back where it was.
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert!(s.doc.occurrences.iter().any(|o| o.id == second));
+    assert_eq!(slots(&mut s)[1]["placed"]["occurrence"].as_u64(), Some(second));
+}
+
+#[test]
+fn placing_needs_a_connection_a_slot_in_use_and_a_readable_part() {
+    let lib = Library::new();
+    let bare = part(&lib, "cylinder", false);
+    let good = part(&lib, "washer", true);
+    let broken = lib.file("Makas ve kol/broken.step", "ISO-10303-21;");
+    lib.file("Makas ve kol/broken.json", r#"{"connection": {"origin": [0, 0, 0], "z": [0, 0, 1], "x": [1, 0, 0]}}"#);
+    let mut s = sash();
+    let on = json!({"label": "Alt", "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600]});
+    s.execute("hardware.slot.add", &on).unwrap();
+    let mut off = on.clone();
+    off["label"] = json!("Ek");
+    off["when"] = json!("FFH > 1300 mm");
+    s.execute("hardware.slot.add", &off).unwrap();
+    let (undo, components, occurrences) = (s.undo.len(), s.doc.components.len(), s.doc.occurrences.len());
+    let error = |s: &mut Session, p: Value| s.execute("hardware.place", &p).unwrap_err().to_string();
+    let e = error(&mut s, json!({"slot": "alt", "path": bare}));
+    assert!(e.contains(NO_CONNECTION), "{e}");
+    let e = error(&mut s, json!({"slot": "ek", "path": good}));
+    assert!(e.contains("not in use"), "{e}");
+    let e = error(&mut s, json!({"slot": "missing", "path": good}));
+    assert!(e.contains("no placement slot"), "{e}");
+    let e = error(&mut s, json!({"slot": "alt", "path": broken}));
+    assert!(!e.is_empty(), "a file that doesn't read");
+    for p in [
+        json!({"slot": "alt", "path": lib.file("Makas ve kol/notes.txt", "x")}),
+        json!({"slot": "alt", "path": lib.0.join("Makas ve kol/missing.step").to_string_lossy()}),
+        json!({"slot": "alt", "path": ""}),
+        json!({"slot": "alt"}),
+        json!({"slot": "alt", "path": good, "colour": 1}),
+    ] {
+        assert!(s.execute("hardware.place", &p).is_err(), "{p}");
+    }
+    assert!(s.execute("hardware.unplace", &json!({"slot": "alt"})).is_err(), "nothing placed");
+    assert_eq!((s.undo.len(), s.doc.components.len(), s.doc.occurrences.len()), (undo, components, occurrences), "nothing changed");
+    // A part deleted by hand frees its slot.
+    let r = s.execute("hardware.place", &json!({"slot": "alt", "path": good})).unwrap();
+    s.execute("selection.delete", &json!({"occurrences": [r["occurrence"]]})).unwrap();
+    assert!(slots(&mut s)[0].get("placed").is_none());
+    let again = s.execute("hardware.place", &json!({"slot": "alt", "path": good})).unwrap();
+    assert_eq!(again["reused"], false, "its component went with it: {again}");
+    assert_eq!(s.doc.metadata.get(SLOTS_KEY).unwrap()["placed"].as_array().map(Vec::len), Some(1), "the stale entry went");
+}
