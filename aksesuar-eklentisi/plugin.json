@@ -1,7 +1,7 @@
 {
   "id": "aksesuar",
   "name": "Aksesuar",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Pencere aksesuarı yardımcıları: aksesuarı kanala yerleştirme, tij kesim ve malzeme listesi (CSV), çift açılım kanat şablonu.",
   "capabilities": ["commands@0.1"],
   "runtime": {
@@ -85,6 +85,7 @@
       "config.configure",
       "config.rule",
       "document.inspect",
+      "hardware.slot.add",
       "joint.create",
       "model.edges",
       "model.faces",

@@ -14,6 +14,10 @@
 //!
 //! The rules are SolidCraft's own (`config.rule`, `drive_suppression`): an ordinary edit of FFH
 //! or CK in the Parameters panel runs them, so the parts come and go without the plugin.
+//!
+//! Last, the template marks where the hardware goes: placement slots (`hardware.slot.add`, see
+//! [`yerlesim_noktalari`]) for the corner drives, the hinges, the stay, the handle and the extra
+//! lock, kept in the design and shown by the Hardware Library.
 
 use serde_json::{Value, json};
 
@@ -297,6 +301,71 @@ pub fn kurallar(f: &Anahtarlar) -> Value {
     json!({ "rules": rules })
 }
 
+/// The library groups the placement slots are for (the Hardware Library's group folders).
+pub const KOSE_AKTARMA: &str = "Köşe aktarma";
+pub const MENTESE: &str = "Menteşe grubu";
+pub const MAKAS_KOL: &str = "Makas ve kol";
+pub const KILIT: &str = "Kilit ispanyolet tij";
+/// The sash profile's section (mm): across the frame (x for the stiles, z for the rails) and deep
+/// (y, room side at 0).
+const PROFIL: f64 = 62.0;
+const DERINLIK: f64 = 70.0;
+
+/// One `hardware.slot.add`: a placement slot on the sash's own bodies (occurrence 0), at the
+/// corner `kose` of the straight edge through `kenar`, on the face through `taban`, across in the
+/// middle of that face.
+#[allow(clippy::too_many_arguments)]
+fn nokta(id: &str, etiket: &str, grup: &str, kose: [f64; 3], kenar: [f64; 3], taban: [f64; 3], boyunca: &str, kosul: Option<&str>) -> Value {
+    let mut p = json!({
+        "id": id, "label": etiket, "group": grup, "occurrence": 0,
+        "edge": kenar, "corner": kose, "on": taban,
+        "along": boyunca, "across": "middle", "angle": 0, "flip": false,
+    });
+    if let (Some(k), Some(m)) = (kosul, p.as_object_mut()) {
+        m.insert("when".into(), json!(k));
+    }
+    p
+}
+
+/// The sash's placement slots, on the faces the template's boxes make (front view upright: X
+/// right, Z up, room side at y = 0; handle side left at x = 0, hinge side right at x = FFB):
+///
+/// - the four corners (corner drives), on the stiles' outer faces (x = 0 and x = FFB), measured
+///   from the sash's corners up or down the room-side edge,
+/// - the bottom and top hinges on the hinge-side stile's end faces (z = 0 and z = FFH) at the
+///   sash's right corners, along the room-side edge,
+/// - the stay (makas) on the top rail's outer face (z = FFH) from its hinge-side end,
+/// - the handle on the handle-side stile's room face (y = 0, where the rosette sits) at KOL from
+///   the bottom, in the middle of the profile,
+/// - the extra lock on the handle-side stile's outer face where the template centres it, in use
+///   while FFH > 1200 mm.
+///
+/// Each slot follows FFH, FFB and KOL: SolidCraft finds its edge and face again by name.
+pub fn yerlesim_noktalari(g: &Girdi) -> Vec<Value> {
+    let (b, h) = (g.ffb, g.ffh);
+    let (orta, yari, ic) = (h / 2.0, DERINLIK / 2.0, b - PROFIL / 2.0);
+    vec![
+        nokta("sol-alt-kose", "Sol alt köşe", KOSE_AKTARMA, [0.0, 0.0, 0.0], [0.0, 0.0, orta], [0.0, yari, orta], "0", None),
+        nokta("sol-ust-kose", "Sol üst köşe", KOSE_AKTARMA, [0.0, 0.0, h], [0.0, 0.0, orta], [0.0, yari, orta], "0", None),
+        nokta("sag-ust-kose", "Sağ üst köşe", KOSE_AKTARMA, [b, 0.0, h], [b, 0.0, orta], [b, yari, orta], "0", None),
+        nokta("sag-alt-kose", "Sağ alt köşe", KOSE_AKTARMA, [b, 0.0, 0.0], [b, 0.0, orta], [b, yari, orta], "0", None),
+        nokta("alt-mentese", "Alt menteşe", MENTESE, [b, 0.0, 0.0], [ic, 0.0, 0.0], [ic, yari, 0.0], "0", None),
+        nokta("ust-mentese", "Üst menteşe", MENTESE, [b, 0.0, h], [ic, 0.0, h], [ic, yari, h], "0", None),
+        nokta("makas", "Makas", MAKAS_KOL, [b - PROFIL, 0.0, h], [b / 2.0, 0.0, h], [b / 2.0, yari, h], "0", None),
+        nokta("kol", "Kol", MAKAS_KOL, [0.0, 0.0, 0.0], [0.0, 0.0, orta], [PROFIL / 2.0, 0.0, orta], "KOL", None),
+        nokta(
+            "ek-kilit-1",
+            "Ek kilit 1",
+            KILIT,
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, orta],
+            [0.0, yari, orta],
+            "(KA + KOL - IS/2)/2",
+            Some("FFH > 1200 mm"),
+        ),
+    ]
+}
+
 fn feature_of(reply: &Value, name: &str) -> Result<u64, Hata> {
     reply.get("feature").and_then(Value::as_u64).ok_or_else(|| Hata::komut("solid.box", format!("`{name}` kutusunun özellik numarası okunamadı.")))
 }
@@ -345,6 +414,11 @@ pub fn calistir(ana: &mut dyn Ana, p: &Value) -> Result<Value, Hata> {
     ana.komut("config.rule", &kurallar(&f))?;
     // Rules switch suppression on edits and activations; activate once so they apply now.
     ana.komut("config.activate", &json!({"row": row}))?;
+    // Where the hardware goes: the placement slots the Hardware Library shows.
+    let noktalar = yerlesim_noktalari(&g);
+    for p in &noktalar {
+        ana.komut("hardware.slot.add", p)?;
+    }
 
     let mut ozet = vec![
         format!("Çift açılım kanadı: FFH {} x FFB {} mm, kol yüksekliği {} mm.", sayi(g.ffh), sayi(g.ffb), sayi(g.kol)),
@@ -358,10 +432,12 @@ pub fn calistir(ana: &mut dyn Ana, p: &Value) -> Result<Value, Hata> {
         if ek_kilit_var(&g) { "var (FFH > 1200); sol alt tij ikiye bölündü" } else { "yok (FFH ≤ 1200); sol alt tij tek parça" }
     ));
     ozet.push(format!("Çocuk kilidi: {}", if g.cocuk_kilidi { "var (CK = 1)" } else { "yok (CK = 0)" }));
+    ozet.push(format!("Yerleşim noktaları: {} (Aksesuar Kütüphanesi panelinde)", noktalar.len()));
     ozet.push("Ölçüleri Global Değişkenler panelinden değiştirin; kilitler kurallarla kendiliğinden açılıp kapanır.".into());
     ana.gunluk(&format!("çift açılım şablonu: FFH {} FFB {} KOL {}", sayi(g.ffh), sayi(g.ffb), sayi(g.kol)));
     Ok(json!({"ozet": ozet, "ek_kilit": f.ek_kilit, "cocuk_kilidi": f.cocuk_kilidi,
-        "tij_sol_alt": f.tij_sol_alt, "tij_sol_alt_1": f.tij_sol_alt_1, "tij_sol_alt_2": f.tij_sol_alt_2, "satir": row}))
+        "tij_sol_alt": f.tij_sol_alt, "tij_sol_alt_1": f.tij_sol_alt_1, "tij_sol_alt_2": f.tij_sol_alt_2, "satir": row,
+        "yerlesim_noktalari": noktalar.len()}))
 }
 
 #[cfg(test)]

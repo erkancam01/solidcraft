@@ -30,6 +30,8 @@ pub const SATIRLAR: &[&str] = &[
     "   Kurallar: FFH ≤ 1200 iken 'EK KILIT 1' bastırılır ve sol alt tij tek parçadır; FFH > 1200 iken ek kilit gelir, sol alt tij ikiye bölünür. CK = 0 iken 'COCUK KILIDI' bastırılır.",
     "   Global Değişkenler panelinde FFH ya da CK'yi değiştirmeniz yeter; kilitler kendiliğinden gelip gider.",
     "   Kuralları Tasarım Tablosu > 'Kural ekle veya düzenle' bölümünde (Konfigürasyon kuralları) görebilir, değiştirebilirsiniz.",
+    "   Yerleşim noktaları: dört köşe, alt ve üst menteşe, makas, kol (KOL) ve ek kilit (FFH > 1200 iken etkin)",
+    "   tasarıma kaydedilir; Aksesuar Kütüphanesi panelinin 'Yerleşim noktaları' bölümünde görünür, ölçülerle birlikte kayar.",
     "",
     "4) Aksesuar Özellikleri",
     "   Bu yardım metni.",

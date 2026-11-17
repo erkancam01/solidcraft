@@ -8,7 +8,10 @@
 //!
 //! The frame: `z` is the seat face's normal out of the material, the origin the reference edge's
 //! end nearest the click on it (or, with From the middle of the edge, its middle), `x` along the
-//! edge away from that end and `y = z × x`. A placement on a slot is later
+//! edge away from that end and `y = z × x`. With Centre across the face (on by default) the origin
+//! then moves along `y` to the middle of the seat face's width (the least and the most of its
+//! exact boundary along `y`), its place along `x` kept: a part placed on a slot whose `across` is
+//! `middle` then sits in the middle of the groove. A placement on a slot is later
 //! `slot frame × inverse(connection frame)`.
 //!
 //! The part's own coordinates are those of the import's top occurrence (the component the file
@@ -57,14 +60,15 @@ pub(crate) struct Frame {
     pub x: Vec3,
 }
 
-/// The seat face as picked: a point on its plane and its normal out of the material, in the
-/// part's coordinates.
+/// The seat face as picked: a point on its plane, its normal out of the material and points of its
+/// exact boundary, in the part's coordinates.
 #[derive(Clone, Debug)]
 struct Seat {
     sel: Sel,
     body: String,
     point: Vec3,
     normal: Vec3,
+    boundary: Vec<Vec3>,
 }
 
 /// The reference edge as picked: its end nearest the click and its other end, in the part's
@@ -92,10 +96,12 @@ pub struct Pick {
     edge: Option<Reference>,
     /// The origin at the edge's middle instead of its nearer end.
     from_middle: bool,
+    /// The origin moved across the seat face to the middle of its width.
+    centre_across: bool,
     /// Why the last pick was not taken, or Save was refused.
     refused: Option<String>,
     /// What a click picked before: bodies, components, and the pick filter's kinds turned off.
-    picking: (bool, bool, Vec<String>),
+    picking: Picking,
     /// The view before the part was framed.
     cam: solidcraft_viewport::Camera,
 }
@@ -107,7 +113,8 @@ impl Pick {
         if seat.body != edge.body {
             return None;
         }
-        frame_of(seat.point, seat.normal, edge.near, edge.far, self.from_middle)
+        let frame = frame_of(seat.point, seat.normal, edge.near, edge.far, self.from_middle)?;
+        Some(if self.centre_across { centred_across(frame, &seat.boundary) } else { frame })
     }
 
     /// What is wrong with the picks as they stand, or with the last one.
@@ -138,6 +145,67 @@ pub(crate) fn frame_of(point: Vec3, normal: Vec3, near: Vec3, far: Vec3, from_mi
     let x = (x - z * x.dot(z)).normalized()?;
     let origin = if from_middle { near.lerp(far, 0.5) } else { near };
     Some(Frame { origin, z, x })
+}
+
+/// `frame` with its origin moved along `y = z × x` to the middle of a face's width: halfway
+/// between the least and the most of the face's `boundary` points along `y`. Its place along `x`
+/// and its axes stay; no boundary leaves it as it is.
+pub(crate) fn centred_across(frame: Frame, boundary: &[Vec3]) -> Frame {
+    let y = frame.z.cross(frame.x);
+    let across = boundary.iter().map(|p| (*p - frame.origin).dot(y)).filter(|d| d.is_finite());
+    let span = across.fold(None, |span: Option<(f64, f64)>, d| Some(span.map_or((d, d), |(lo, hi)| (lo.min(d), hi.max(d)))));
+    match span {
+        Some((lo, hi)) => Frame { origin: frame.origin + y * ((lo + hi) / 2.0), ..frame },
+        None => frame,
+    }
+}
+
+/// Points of face `index` of `b`'s exact boundary: each of its edges' path segments, at their
+/// ends and seven points between (in `b`'s coordinates). Empty for a face without edges.
+pub(crate) fn face_boundary(b: &solidcraft_engine::doc::ModelBody, index: usize) -> Vec<Vec3> {
+    let mut points = Vec::new();
+    for edge in solidcraft_engine::kernel::face_edge_indices(&b.body, index) {
+        let Ok(path) = solidcraft_engine::kernel::edge_path(&b.body, edge) else { continue };
+        for seg in &path {
+            points.push(seg.start());
+            points.extend((1..8).filter_map(|k| seg.along(f64::from(k) / 8.0).map(|(p, _)| p)));
+            points.push(seg.end());
+        }
+    }
+    points
+}
+
+/// Where a picking card starts: inside the 3D view's free area (clear of the ribbon, the browser
+/// and the panels over the view), `space_16` in from its top left; `None` before the view is laid
+/// out.
+pub(crate) fn card_corner(app: &SolveApp) -> Option<egui::Pos2> {
+    let t = Tokens::get();
+    let rect = app.viewport.rect?;
+    let view = crate::shell::content_rect(app, rect);
+    let mut obstacles = crate::shell::covered_rects(app);
+    if let Some(layout) = &app.viewport.layout {
+        obstacles.extend([layout.navigation, layout.axis_view]);
+    }
+    let free = crate::viewport_layout::free_rect(view, &obstacles);
+    let free = if free.is_positive() { free } else { view };
+    Some(free.left_top() + vec2(t.space_16, t.space_16))
+}
+
+/// A frame drawn as its three axes from its origin, `len` long: x, y = z × x and z in the theme's
+/// axis colours, and a dot at the origin.
+pub(crate) fn paint_triad(painter: &egui::Painter, proj: &Proj, frame: &Frame, len: f64) {
+    let t = Tokens::get();
+    let axis = |dir: Vec3, colour: egui::Color32| {
+        if let (Some(a), Some(b)) = (proj.to_screen(frame.origin), proj.to_screen(frame.origin + dir * len)) {
+            painter.line_segment([a, b], Stroke::new(2.5, colour));
+        }
+    };
+    axis(frame.x, t.axis_x);
+    axis(frame.z.cross(frame.x), t.axis_y);
+    axis(frame.z, t.axis_z);
+    if let Some(c) = proj.to_screen(frame.origin) {
+        painter.circle(c, 4.5, t.panel, Stroke::new(1.5, t.text));
+    }
 }
 
 /// Points and directions in the world as a part placed at `placement` has them: the placement's
@@ -181,7 +249,7 @@ pub(crate) fn straight(points: &[Vec3]) -> Option<(Vec3, Vec3)> {
 
 /// The ends of edge `index` of `b` when it is straight: from its exact curve, or, for an edge
 /// whose curve the record holds only as its surfaces, from the drawn edge.
-fn straight_ends(b: &solidcraft_engine::doc::ModelBody, index: usize) -> Option<(Vec3, Vec3)> {
+pub(crate) fn straight_ends(b: &solidcraft_engine::doc::ModelBody, index: usize) -> Option<(Vec3, Vec3)> {
     let points: Vec<Vec3> = match solidcraft_engine::kernel::edge_path(&b.body, index) {
         Ok(path) if !path.is_empty() => {
             path.iter().flat_map(|seg| [Some(seg.start()), seg.along(0.5).map(|(p, _)| p), Some(seg.end())]).flatten().collect()
@@ -209,6 +277,9 @@ pub(crate) fn start(app: &mut SolveApp, path: &str, name: &str) -> Result<(), St
     if active(app) {
         return Ok(());
     }
+    if crate::hardware_slot::active(app) {
+        return Err(tr("hardware_slot.busy").to_owned());
+    }
     if app.session.active_sketch.is_some() || app.edit_in_place.active.is_some() {
         return Err(tr("hardware_connection.finish_first").to_owned());
     }
@@ -229,13 +300,7 @@ pub(crate) fn start(app: &mut SolveApp, path: &str, name: &str) -> Result<(), St
             });
         }
     };
-    let picking = (app.ui.pick_bodies, app.ui.pick_components, app.ui.pick_off.clone());
-    app.ui.pick_bodies = false;
-    app.ui.pick_components = false;
-    app.ui.pick_off.retain(|kind| !PICKED.contains(&kind.as_str()));
-    if !app.ui.pick_off.iter().any(|kind| kind == NOT_PICKED) {
-        app.ui.pick_off.push(NOT_PICKED.to_owned());
-    }
+    let picking = pick_faces_and_edges(app);
     app.session.selection.clear();
     let cam = app.cam;
     let bounds = crate::dialogs_assembly::occurrence_bounds(&app.session, &[occurrence]);
@@ -254,6 +319,7 @@ pub(crate) fn start(app: &mut SolveApp, path: &str, name: &str) -> Result<(), St
         face: None,
         edge: None,
         from_middle: false,
+        centre_across: true,
         refused: None,
         picking,
         cam,
@@ -275,7 +341,9 @@ fn seat(app: &SolveApp, pick: &Pick, sel: &Sel) -> Result<Seat, &'static str> {
     let (point, normal) = crate::dialogs::planar_face(&app.session, body, *index).ok_or("hardware_connection.not_flat")?;
     let part = placement(&app.session, pick.occurrence).and_then(|m| PartCoordinates::of(&m)).ok_or("hardware_connection.not_on_part")?;
     let normal = part.direction(normal).ok_or("hardware_connection.not_flat")?;
-    Ok(Seat { sel: sel.clone(), body: body.clone(), point: part.point(point), normal })
+    let world = crate::open_meshing::session_world(&app.session);
+    let boundary = world.body(body).map(|b| face_boundary(b, *index)).unwrap_or_default().into_iter().map(|p| part.point(p)).collect();
+    Ok(Seat { sel: sel.clone(), body: body.clone(), point: part.point(point), normal, boundary })
 }
 
 /// The reference edge an edge pick stands for, or the message id saying why it is none.
@@ -324,12 +392,34 @@ fn take_picks(app: &mut SolveApp) {
     app.hardware_connection = Some(pick);
 }
 
-/// Put back what picking changed in the app: the pick filter and the view.
-fn put_back(app: &mut SolveApp, pick: &Pick, view: bool) {
-    let (bodies, components, off) = pick.picking.clone();
+/// What a click picked before a picking mode: bodies, components, and the pick filter's kinds
+/// turned off.
+pub(crate) type Picking = (bool, bool, Vec<String>);
+
+/// Make a click pick faces and edges only (not bodies, components or corners), for a picking
+/// mode; returns what it picked before, for [`restore_picking`].
+pub(crate) fn pick_faces_and_edges(app: &mut SolveApp) -> Picking {
+    let picking = (app.ui.pick_bodies, app.ui.pick_components, app.ui.pick_off.clone());
+    app.ui.pick_bodies = false;
+    app.ui.pick_components = false;
+    app.ui.pick_off.retain(|kind| !PICKED.contains(&kind.as_str()));
+    if !app.ui.pick_off.iter().any(|kind| kind == NOT_PICKED) {
+        app.ui.pick_off.push(NOT_PICKED.to_owned());
+    }
+    picking
+}
+
+/// Put the pick filter back as [`pick_faces_and_edges`] found it.
+pub(crate) fn restore_picking(app: &mut SolveApp, picking: &Picking) {
+    let (bodies, components, off) = picking.clone();
     app.ui.pick_bodies = bodies;
     app.ui.pick_components = components;
     app.ui.pick_off = off;
+}
+
+/// Put back what picking changed in the app: the pick filter and the view.
+fn put_back(app: &mut SolveApp, pick: &Pick, view: bool) {
+    restore_picking(app, &pick.picking);
     if view {
         app.animate_to(pick.cam);
     }
@@ -412,13 +502,12 @@ pub(crate) fn show(app: &mut SolveApp, ctx: &egui::Context) {
     }
     take_picks(app);
     let Some(mut pick) = app.hardware_connection.take() else { return };
-    let t = Tokens::get();
     let valid = pick.frame().is_some();
-    let window = ui_kit::Window::new(egui::Id::unique("sc_hardware_connection"), "joint_origin", tr("hardware_connection.title"))
+    let window = ui_kit::Window::new(egui::Id::unique("sc_hardware_connection_card"), "joint_origin", tr("hardware_connection.title"))
         .actions(tr("ui.save"), tr("ui.cancel"), None)
         .cards(1.25);
-    let window = match app.viewport.rect {
-        Some(rect) => window.placed(egui::Align2::LEFT_TOP, rect.left_top() + vec2(t.space_16, t.space_16)),
+    let window = match card_corner(app) {
+        Some(corner) => window.placed(egui::Align2::LEFT_TOP, corner),
         None => window.anchor(egui::Align2::CENTER_TOP, vec2(0.0, 140.0)),
     };
     let (closed, action) = window.show(ctx, valid, |ui| card(ui, &mut pick));
@@ -446,6 +535,7 @@ fn card(ui: &mut egui::Ui, pick: &mut Pick) {
         ui_kit::text(ui, &note, ui_kit::Text::Note(hint));
     }
     ui_kit::checkbox(ui, tr("hardware_connection.from_middle"), &mut pick.from_middle);
+    ui_kit::checkbox(ui, tr("hardware_connection.centre_across"), &mut pick.centre_across);
     if let Some(problem) = pick.problem() {
         ui_kit::status_line(ui, &problem, ui_kit::StatusTone::Error);
     }
@@ -457,25 +547,22 @@ pub(crate) fn overlay(app: &SolveApp, painter: &egui::Painter, proj: &Proj) {
     let Some(pick) = app.hardware_connection.as_ref() else { return };
     let Some(placement) = placement(&app.session, pick.occurrence) else { return };
     let t = Tokens::get();
-    let len = app.cam.half_height() * 2.0 * 0.06;
-    let axis = |from: Vec3, dir: Vec3, colour: egui::Color32| {
-        if let (Some(a), Some(b)) = (proj.to_screen(from), proj.to_screen(from + dir * len)) {
-            painter.line_segment([a, b], Stroke::new(2.5, colour));
-        }
-    };
+    let len = triad_length(app);
     if let Some(frame) = pick.frame().and_then(|f| in_world(&placement, &f)) {
-        axis(frame.origin, frame.x, t.axis_x);
-        axis(frame.origin, frame.z.cross(frame.x), t.axis_y);
-        axis(frame.origin, frame.z, t.axis_z);
-        if let Some(c) = proj.to_screen(frame.origin) {
-            painter.circle(c, 4.5, t.panel, Stroke::new(1.5, t.text));
-        }
+        paint_triad(painter, proj, &frame, len);
     } else if let Some(seat) = &pick.face {
         let at = apply_point(&placement, seat.point);
-        if let Some(normal) = apply_vector(&placement, seat.normal).normalized() {
-            axis(at, normal, t.axis_z);
+        if let Some(normal) = apply_vector(&placement, seat.normal).normalized()
+            && let (Some(a), Some(b)) = (proj.to_screen(at), proj.to_screen(at + normal * len))
+        {
+            painter.line_segment([a, b], Stroke::new(2.5, t.axis_z));
         }
     }
+}
+
+/// How long a picking triad's axes are drawn: a share of the view's height.
+pub(crate) fn triad_length(app: &SolveApp) -> f64 {
+    app.cam.half_height() * 2.0 * 0.06
 }
 
 #[cfg(test)]
@@ -503,6 +590,20 @@ mod tests {
         assert!(frame_of(point, normal, near, far + Vec3::Z, false).is_none());
         assert!(frame_of(point, normal, near, near, false).is_none());
         assert!(frame_of(point, Vec3::ZERO, near, far, false).is_none());
+    }
+
+    #[test]
+    fn centred_across_moves_the_origin_to_the_middle_of_the_faces_width() {
+        // A seat face 8 mm across (y from -1 to 7 with x along the edge, z up), its edge at y = 0.
+        let frame = Frame { origin: Vec3::new(2.0, 0.0, 0.0), z: Vec3::Z, x: Vec3::X };
+        let boundary = [Vec3::new(0.0, -1.0, 0.0), Vec3::new(40.0, -1.0, 0.0), Vec3::new(40.0, 7.0, 0.0), Vec3::new(0.0, 5.0, 0.0)];
+        let centred = centred_across(frame, &boundary);
+        assert!(close(centred.origin, Vec3::new(2.0, 3.0, 0.0)), "along x it stays: {centred:?}");
+        assert!(close(centred.x, frame.x) && close(centred.z, frame.z));
+        // y = z × x: with the seat face facing down, y runs the other way, and the middle is the same.
+        let down = Frame { origin: Vec3::new(2.0, 0.0, 0.0), z: -Vec3::Z, x: Vec3::X };
+        assert!(close(centred_across(down, &boundary).origin, Vec3::new(2.0, 3.0, 0.0)));
+        assert_eq!(centred_across(frame, &[]), frame, "no boundary: as it was");
     }
 
     #[test]
@@ -595,6 +696,11 @@ mod tests {
         app.session.selection.push(Sel::Edge { body: name, index: edge, point: Vec3::new(2.0, 0.0, 0.0) });
         take_picks(&mut app);
         assert_eq!(app.session.selection.len(), 2, "the selection shows both picks");
+        let pick = app.hardware_connection.as_mut().unwrap();
+        assert!(pick.centre_across, "centred across by default");
+        pick.centre_across = false;
+        assert!(close(pick.frame().unwrap().origin, Vec3::ZERO), "without it, the end nearest the click");
+        pick.centre_across = true;
         save(&mut app).unwrap();
 
         let card: Value = serde_json::from_str(&std::fs::read_to_string(part.0.join("corner.json")).unwrap()).unwrap();
@@ -602,7 +708,8 @@ mod tests {
             let a: Vec<f64> = card["connection"][key].as_array().unwrap().iter().map(|n| n.as_f64().unwrap()).collect();
             Vec3::new(a[0], a[1], a[2])
         };
-        assert!(close(v("origin"), Vec3::ZERO), "the end nearest the click: {card}");
+        // The end nearest the click (x = 0), moved across the 20 mm wide face to its middle.
+        assert!(close(v("origin"), Vec3::new(0.0, 10.0, 0.0)), "the end nearest the click, centred across: {card}");
         assert!(close(v("z"), -Vec3::Z), "out of the seat face: {card}");
         assert!(close(v("x"), Vec3::X), "along the edge: {card}");
         assert!(!active(&app));

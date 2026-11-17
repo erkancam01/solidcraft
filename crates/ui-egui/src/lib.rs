@@ -82,6 +82,7 @@ pub mod gizmo;
 pub mod gpu;
 mod hardware_connection;
 pub mod hardware_library;
+mod hardware_slot;
 pub mod help;
 pub use solidcraft_ui_kit::history_bar;
 mod history_folds;
@@ -687,6 +688,8 @@ pub struct SolveApp {
     /// A hardware part's connection point being picked (`hardware_connection`): the part is in
     /// the design until Save or Cancel takes it back to the checkpoint before it.
     pub(crate) hardware_connection: Option<hardware_connection::Pick>,
+    /// A placement slot being added or edited (`hardware_slot`): nothing changes until Save.
+    pub(crate) hardware_slot: Option<hardware_slot::Pick>,
     material_card_review: Option<material_card_review::ReviewWindow>,
     /// Context menus, rename box and Properties window.
     pub menu: context_menu::MenuState,
@@ -1030,6 +1033,7 @@ impl SolveApp {
             bom: None,
             hardware_library: None,
             hardware_connection: None,
+            hardware_slot: None,
             material_card_review: None,
             menu: context_menu::MenuState::default(),
             gesture: mouse_gesture::State::default(),
@@ -3982,6 +3986,7 @@ impl SolveApp {
         plugin_menu::show(self, ui.ctx());
         stand_up::show(self, ui.ctx());
         hardware_connection::show(self, ui.ctx());
+        hardware_slot::show(self, ui.ctx());
         prefs_notice::show(self, ui.ctx());
         context_menu::show(self, ui.ctx());
         mouse_gesture::show(self, ui.ctx());

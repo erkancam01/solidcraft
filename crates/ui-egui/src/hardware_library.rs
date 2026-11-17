@@ -4,7 +4,9 @@
 //! a connection point. Clicking a row selects it; Insert into design (or a double click) brings a
 //! hardware STEP part in through `file.insert_step`, and Connection point… defines where it
 //! attaches (`hardware_connection`). Profiles and DXF sections wait for a later step. The
-//! ribbon's Hardware Library (`ui.start` of `hardware.library.list`) opens it.
+//! ribbon's Hardware Library (`ui.start` of `hardware.library.list`) opens it. Below the parts,
+//! the Placement slots section lists the design's placement slots and adds, edits and deletes
+//! them (`hardware_slot`); while the panel is open the view shows them.
 //!
 //! Pictures are made the way Home makes a recent design's (`home::file_picture`, cached on disk by
 //! the file's path, size and time), off the window thread and one at a time, only for rows on
@@ -47,6 +49,8 @@ pub struct HardwareLibrary {
     /// The last refusal (an insert that failed).
     pub error: Option<String>,
     pictures: Pictures,
+    /// The design's placement slots (`hardware_slot`), listed again as the design changes.
+    pub(crate) slots: crate::hardware_slot::Listed,
 }
 
 impl Drop for HardwareLibrary {
@@ -136,6 +140,33 @@ fn list(app: &mut SolveApp, d: &mut HardwareLibrary, folder: String) {
     d.listing = Some((folder, result));
 }
 
+/// The library's group folders, by name, as last listed.
+fn groups(d: &HardwareLibrary) -> Vec<String> {
+    let listed = d.listing.as_ref().and_then(|(_, result)| result.as_ref().ok());
+    listed
+        .and_then(|l| l["groups"].as_array())
+        .map(|groups| groups.iter().filter_map(|g| g["name"].as_str()).filter(|n| !n.is_empty()).map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+/// What the Placement slots section asked for.
+fn slot_action(app: &mut SolveApp, d: &mut HardwareLibrary, action: crate::hardware_slot::SlotAction) {
+    use crate::hardware_slot::SlotAction;
+    match action {
+        SlotAction::Add => d.error = crate::hardware_slot::start(app, None, groups(d)).err(),
+        SlotAction::Edit(id) => {
+            if let Some(slot) = d.slots.slots.iter().find(|s| s.id == id).cloned() {
+                d.error = crate::hardware_slot::start(app, Some(&slot), groups(d)).err();
+            }
+        }
+        SlotAction::Delete(id) => d.error = app.run("hardware.slot.delete", json!({ "id": id })).err(),
+        SlotAction::Select(id) => {
+            d.slots.selected = if d.slots.selected.as_deref() == Some(id.as_str()) { None } else { Some(id) };
+            d.error = None;
+        }
+    }
+}
+
 fn text<'a>(part: &'a Value, key: &str) -> &'a str {
     part[key].as_str().unwrap_or_default()
 }
@@ -166,7 +197,7 @@ fn insert_name(part: &Value) -> &str {
 
 fn insert(app: &mut SolveApp, d: &mut HardwareLibrary, part: &Value) {
     // While a connection point is picked, the design goes back afterwards: nothing comes in.
-    if !insertable(part) || crate::hardware_connection::active(app) {
+    if !insertable(part) || crate::hardware_connection::active(app) || crate::hardware_slot::active(app) {
         return;
     }
     d.error = app.run("file.insert_step", json!({ "path": text(part, "path"), "name": insert_name(part) })).err();
@@ -202,6 +233,7 @@ fn body(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
         list(app, d, wanted);
     }
     d.pictures.poll(ui.ctx());
+    crate::hardware_slot::refresh(app, &mut d.slots);
     let library = d.listing.as_ref().and_then(|(_, result)| result.as_ref().ok()).cloned();
     let parts = library.as_ref().and_then(|l| l["parts"].as_array()).map_or(&[][..], Vec::as_slice);
     let selected = d.selected.as_deref().and_then(|path| parts.iter().find(|p| p["path"].as_str() == Some(path))).cloned();
@@ -210,7 +242,7 @@ fn body(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
     }
 
     let failure = d.listing.as_ref().and_then(|(_, result)| result.as_ref().err()).cloned();
-    let busy = crate::hardware_connection::active(app);
+    let busy = crate::hardware_connection::active(app) || crate::hardware_slot::active(app);
     let footer = crate::ui_kit::Panel::pinned_footer(ui, "hardware-library-actions", 2, |ui| footer_buttons(ui, selected.as_ref(), busy));
     folder_row(app, ui, d);
     let search_id = ui.make_persistent_id("hardware-library-search");
@@ -223,22 +255,31 @@ fn body(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
         .id_salt("hardware-library-parts")
         .min_scrolled_height(0.0)
         .max_height(ui.available_height().max(1.0))
-        .show(ui, |ui| match (&library, &failure) {
-            (Some(library), _) => parts_list(ui, d, library, &needle),
-            (None, Some(error)) => {
-                ui.label(RichText::new(error.as_str()).color(t.error));
-                None
-            }
-            (None, None) => {
-                ui.label(RichText::new(tr("hardware_library.no_folder")).color(t.text_dim));
-                None
-            }
+        .show(ui, |ui| {
+            let row = match (&library, &failure) {
+                (Some(library), _) => parts_list(ui, d, library, &needle),
+                (None, Some(error)) => {
+                    ui.label(RichText::new(error.as_str()).color(t.error));
+                    None
+                }
+                (None, None) => {
+                    ui.label(RichText::new(tr("hardware_library.no_folder")).color(t.text_dim));
+                    None
+                }
+            };
+            ui.separator();
+            let slot = crate::hardware_slot::section(ui, &d.slots, busy);
+            (row, slot)
         });
     let after = scroll.inner_rect.bottom();
     if let Some(error) = &d.error {
         ui.label(RichText::new(error.as_str()).color(t.error));
     }
-    match scroll.inner {
+    let (row, slot) = scroll.inner;
+    if let Some(action) = slot {
+        slot_action(app, d, action);
+    }
+    match row {
         Some(RowAction::Select(path)) => {
             d.selected = Some(path);
             d.error = None;

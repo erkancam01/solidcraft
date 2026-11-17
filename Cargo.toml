@@ -185,6 +185,17 @@ opt-level = 2
 # downloads. Our own crates keep theirs, so a backtrace still names file:line in them.
 debug = false
 
+# Aksesuar çatalı: hızlı deneme derlemesi (`--profile hizli`). Kendi crate'lerimiz artımlı ve
+# hafif optimize, bağımlılıklar dev gibi opt-level 2; LTO yok. Teslim paketleri yine release ile.
+[profile.hizli]
+inherits = "dev"
+opt-level = 1
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = true
+codegen-units = 256
+
 [profile.release]
 opt-level = 3
 lto = "thin"

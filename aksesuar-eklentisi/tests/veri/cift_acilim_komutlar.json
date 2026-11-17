@@ -1011,5 +1011,258 @@
     "params": {
       "row": "Default"
     }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "0",
+      "angle": 0,
+      "corner": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "edge": [
+        0.0,
+        0.0,
+        600.0
+      ],
+      "flip": false,
+      "group": "Köşe aktarma",
+      "id": "sol-alt-kose",
+      "label": "Sol alt köşe",
+      "occurrence": 0,
+      "on": [
+        0.0,
+        35.0,
+        600.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "0",
+      "angle": 0,
+      "corner": [
+        0.0,
+        0.0,
+        1200.0
+      ],
+      "edge": [
+        0.0,
+        0.0,
+        600.0
+      ],
+      "flip": false,
+      "group": "Köşe aktarma",
+      "id": "sol-ust-kose",
+      "label": "Sol üst köşe",
+      "occurrence": 0,
+      "on": [
+        0.0,
+        35.0,
+        600.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "0",
+      "angle": 0,
+      "corner": [
+        900.0,
+        0.0,
+        1200.0
+      ],
+      "edge": [
+        900.0,
+        0.0,
+        600.0
+      ],
+      "flip": false,
+      "group": "Köşe aktarma",
+      "id": "sag-ust-kose",
+      "label": "Sağ üst köşe",
+      "occurrence": 0,
+      "on": [
+        900.0,
+        35.0,
+        600.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "0",
+      "angle": 0,
+      "corner": [
+        900.0,
+        0.0,
+        0.0
+      ],
+      "edge": [
+        900.0,
+        0.0,
+        600.0
+      ],
+      "flip": false,
+      "group": "Köşe aktarma",
+      "id": "sag-alt-kose",
+      "label": "Sağ alt köşe",
+      "occurrence": 0,
+      "on": [
+        900.0,
+        35.0,
+        600.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "0",
+      "angle": 0,
+      "corner": [
+        900.0,
+        0.0,
+        0.0
+      ],
+      "edge": [
+        869.0,
+        0.0,
+        0.0
+      ],
+      "flip": false,
+      "group": "Menteşe grubu",
+      "id": "alt-mentese",
+      "label": "Alt menteşe",
+      "occurrence": 0,
+      "on": [
+        869.0,
+        35.0,
+        0.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "0",
+      "angle": 0,
+      "corner": [
+        900.0,
+        0.0,
+        1200.0
+      ],
+      "edge": [
+        869.0,
+        0.0,
+        1200.0
+      ],
+      "flip": false,
+      "group": "Menteşe grubu",
+      "id": "ust-mentese",
+      "label": "Üst menteşe",
+      "occurrence": 0,
+      "on": [
+        869.0,
+        35.0,
+        1200.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "0",
+      "angle": 0,
+      "corner": [
+        838.0,
+        0.0,
+        1200.0
+      ],
+      "edge": [
+        450.0,
+        0.0,
+        1200.0
+      ],
+      "flip": false,
+      "group": "Makas ve kol",
+      "id": "makas",
+      "label": "Makas",
+      "occurrence": 0,
+      "on": [
+        450.0,
+        35.0,
+        1200.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "KOL",
+      "angle": 0,
+      "corner": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "edge": [
+        0.0,
+        0.0,
+        600.0
+      ],
+      "flip": false,
+      "group": "Makas ve kol",
+      "id": "kol",
+      "label": "Kol",
+      "occurrence": 0,
+      "on": [
+        31.0,
+        0.0,
+        600.0
+      ]
+    }
+  },
+  {
+    "command": "hardware.slot.add",
+    "params": {
+      "across": "middle",
+      "along": "(KA + KOL - IS/2)/2",
+      "angle": 0,
+      "corner": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "edge": [
+        0.0,
+        0.0,
+        600.0
+      ],
+      "flip": false,
+      "group": "Kilit ispanyolet tij",
+      "id": "ek-kilit-1",
+      "label": "Ek kilit 1",
+      "occurrence": 0,
+      "on": [
+        0.0,
+        35.0,
+        600.0
+      ],
+      "when": "FFH > 1200 mm"
+    }
   }
 ]

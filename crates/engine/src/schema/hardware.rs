@@ -162,6 +162,232 @@ pub struct HardwareCardSet {
     pub param_warnings: Vec<String>,
 }
 
+/// A placement slot ("yerleşim noktası"): a named place on the sash where a part of a library
+/// group goes, kept in the design's metadata under `tr.aksesuar.yerlesim`. Its frame starts at the
+/// corner of an edge of the floor face (the profile face the hardware sits on), found again by name
+/// as the design's parameters change; the part's connection point goes `along` the edge from the
+/// corner and `across` the floor, turned `angle` about the floor's normal.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HardwareSlot {
+    /// A unique slug (`a-z`, `0-9`, `-`, `_`; at most 64 characters).
+    pub id: String,
+    /// The slot's name, as the user reads it.
+    pub label: String,
+    /// The library group whose parts go here (a group folder's name).
+    pub group: String,
+    /// The edge-corner joint origin the slot starts from: on the floor face, at the corner where
+    /// the picked edge starts, with the face's and the edges' names.
+    #[schemars(with = "serde_json::Value")]
+    pub origin: solidcraft_doc::joints::JointOrigin,
+    /// How far along the picked edge from the corner (mm): a number or an expression.
+    pub along: String,
+    /// How far across the floor face from the edge (mm): an expression, or `middle` for the
+    /// middle of the floor face's width.
+    pub across: String,
+    /// The part's turn about the floor face's normal (deg): 0, 90, 180 or 270; at 0 the part's
+    /// connection x runs along the edge, away from the corner.
+    pub angle: u16,
+    /// The part's connection z along the floor's normal instead of against it (the joint's flip).
+    #[serde(default)]
+    pub flip: bool,
+    /// The condition the slot is in use under (in use while it is not 0, such as `FFH > 1200 mm`);
+    /// `null`: always.
+    #[serde(default)]
+    pub when: Option<String>,
+}
+
+/// A frame in the world: its origin and its unit axes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HardwareSlotFrame {
+    /// The origin (mm).
+    pub origin: [f64; 3],
+    /// The unit x axis.
+    pub x: [f64; 3],
+    /// The unit y axis (z × x).
+    pub y: [f64; 3],
+    /// The unit z axis.
+    pub z: [f64; 3],
+}
+
+/// Add a placement slot to the design (one undo step), or, with `preview`, work out what it would
+/// be without adding it.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HardwareSlotAddParams {
+    /// The slot's name (1 to 256 characters, no control characters).
+    pub label: String,
+    /// The library group whose parts go here (at most 256 characters).
+    pub group: String,
+    /// A point on the picked edge (world): a straight edge of the floor face.
+    pub edge: [f64; 3],
+    /// The corner the slot is measured from (world): the edge's end nearest it.
+    pub corner: [f64; 3],
+    /// A point on the floor face (world). Default: the larger planar face beside the edge.
+    #[serde(default)]
+    pub on: Option<[f64; 3]>,
+    /// The occurrence holding the floor face (0: the design's own bodies). Default: the one at
+    /// `edge`.
+    #[serde(default)]
+    pub occurrence: Option<u64>,
+    /// Along the edge from the corner (default `0`).
+    #[serde(default)]
+    pub along: Option<super::types::LengthExpr>,
+    /// Across the floor face (default `middle`).
+    #[serde(default)]
+    pub across: Option<super::types::LengthExpr>,
+    /// 0, 90, 180 or 270 (default 0).
+    #[serde(default)]
+    pub angle: Option<u16>,
+    /// The joint's flip (default false).
+    #[serde(default)]
+    pub flip: Option<bool>,
+    /// The condition (default: always in use; `""` too).
+    #[serde(default)]
+    pub when: Option<String>,
+    /// The slot's id (default: made from the label).
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Work it out without changing the design.
+    #[serde(default)]
+    pub preview: bool,
+}
+
+/// Change a placement slot (one undo step), or, with `preview`, work out what it would be. A key
+/// left out keeps its value; `edge` and `corner` (with `on?`, `occurrence?`) pick its corner again.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HardwareSlotEditParams {
+    /// The slot's id.
+    pub id: String,
+    /// The slot's name.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// The library group.
+    #[serde(default)]
+    pub group: Option<String>,
+    /// Along the edge from the corner.
+    #[serde(default)]
+    pub along: Option<super::types::LengthExpr>,
+    /// Across the floor face, or `middle`.
+    #[serde(default)]
+    pub across: Option<super::types::LengthExpr>,
+    /// 0, 90, 180 or 270.
+    #[serde(default)]
+    pub angle: Option<u16>,
+    /// The joint's flip.
+    #[serde(default)]
+    pub flip: Option<bool>,
+    /// The condition; `null` or `""`: always in use.
+    #[serde(default, deserialize_with = "super::present")]
+    #[schemars(with = "Option<String>")]
+    pub when: Option<Option<String>>,
+    /// A point on the edge picked again (world), with `corner`.
+    #[serde(default)]
+    pub edge: Option<[f64; 3]>,
+    /// The corner picked again (world), with `edge`.
+    #[serde(default)]
+    pub corner: Option<[f64; 3]>,
+    /// A point on the floor face picked again (world).
+    #[serde(default)]
+    pub on: Option<[f64; 3]>,
+    /// The occurrence holding the floor face picked again.
+    #[serde(default)]
+    pub occurrence: Option<u64>,
+    /// Work it out without changing the design.
+    #[serde(default)]
+    pub preview: bool,
+}
+
+/// Remove a placement slot (one undo step).
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HardwareSlotDeleteParams {
+    /// The slot's id.
+    pub id: String,
+}
+
+/// List the design's placement slots, without changing it.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HardwareSlotListParams {
+    /// Only the slots of this library group.
+    #[serde(default)]
+    pub group: Option<String>,
+}
+
+/// A slot as `hardware.slot.add` and `hardware.slot.edit` leave it, with where it is now.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HardwareSlotSet {
+    /// The slot as kept.
+    pub slot: HardwareSlot,
+    /// The slot's frame in the world (as `hardware.slot.list` gives it).
+    pub frame: HardwareSlotFrame,
+    /// Whether its condition holds now.
+    pub active: bool,
+    /// `joint.create`'s side `a` that puts a part there (as `hardware.slot.list` gives it).
+    pub joint_a: serde_json::Value,
+    /// The planar joint's values (as `hardware.slot.list` gives them).
+    pub values: Vec<serde_json::Value>,
+    /// The planar joint's limits (as `hardware.slot.list` gives them).
+    pub limits: Vec<serde_json::Value>,
+    /// Worked out only: the design is unchanged.
+    pub preview: bool,
+    /// In the warn parameter-check mode: what the call's parameters got wrong.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_warnings: Vec<String>,
+}
+
+/// What `hardware.slot.delete` returns.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HardwareSlotDeleted {
+    /// The slot removed.
+    pub id: String,
+    /// How many slots are left.
+    pub slots: usize,
+    /// In the warn parameter-check mode: what the call's parameters got wrong.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_warnings: Vec<String>,
+}
+
+/// One slot of `hardware.slot.list`: as kept, and where it is now.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HardwareSlotListed {
+    /// The slot as kept.
+    #[serde(flatten)]
+    pub slot: HardwareSlot,
+    /// Its condition holds now (and nothing is wrong with it).
+    pub active: bool,
+    /// Its frame in the world after `along`, `across` and `angle`: the origin where the part's
+    /// connection point goes, z out of the floor face, x the way the part's connection x runs (a
+    /// part mated there has its connection z along -z, along z when `flip`). `null` with `error`.
+    pub frame: Option<HardwareSlotFrame>,
+    /// Why the slot can't be placed now (its edge or face gone, an expression that no longer
+    /// evaluates); the other slots are listed all the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// `joint.create`'s side `a` for a planar joint that puts a part on the slot: the edge-corner
+    /// origin as world points (`occurrence`, `edge`, `corner`, `on`).
+    pub joint_a: Option<serde_json::Value>,
+    /// The planar joint's values: the shift along a's x and y (one of them `along`, kept as an
+    /// expression, the other `across`) and the turn (deg).
+    pub values: Option<Vec<serde_json::Value>>,
+    /// The planar joint's limits: `across` (unless an expression) and the turn held.
+    pub limits: Option<Vec<serde_json::Value>>,
+}
+
+/// What `hardware.slot.list` returns.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HardwareSlotList {
+    /// The slots, in the order they were added.
+    pub slots: Vec<HardwareSlotListed>,
+    /// Entries of the design's slot list this version can't read (left as they are).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unreadable: Vec<String>,
+    /// In the warn parameter-check mode: what the call's parameters got wrong.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_warnings: Vec<String>,
+}
+
 #[cfg(test)]
 #[path = "hardware_tests.rs"]
 mod tests;

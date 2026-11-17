@@ -302,3 +302,276 @@ fn a_folder_typed_with_slashes_gives_paths_with_one_separator() {
     }
     assert_eq!(native("C:/Lib/Profil/a.dxf"), r"C:\Lib\Profil\a.dxf");
 }
+
+// ---- Placement slots ----
+
+fn v3(v: &Value) -> Vec3 {
+    let a: Vec<f64> = v.as_array().unwrap().iter().map(|n| n.as_f64().unwrap()).collect();
+    Vec3::new(a[0], a[1], a[2])
+}
+
+fn near(a: Vec3, b: Vec3) -> bool {
+    a.dist(b) < 1e-6
+}
+
+/// A sash's right profile as the Çift Açılım template builds it: x FFB - 62 … FFB, y 0 … 70, z 0 …
+/// FFH, its outer face (where the hardware sits) at x = FFB.
+fn sash() -> Session {
+    let mut s = Session::default();
+    for (name, expression) in [("FFH", "1200 mm"), ("FFB", "900 mm"), ("KOL", "600 mm")] {
+        s.execute("parameters.add", &json!({"name": name, "expression": expression})).unwrap();
+    }
+    s.execute(
+        "solid.box",
+        &json!({"length": "62 mm", "width": "70 mm", "height": "FFH", "center": ["FFB - 31 mm", "35 mm", "FFH/2"],
+            "name": "Kanat sag", "body_name": "Kanat sag", "operation": "new"}),
+    )
+    .unwrap();
+    s
+}
+
+fn slots(s: &mut Session) -> Vec<Value> {
+    s.execute("hardware.slot.list", &json!({})).unwrap()["slots"].as_array().unwrap().clone()
+}
+
+#[test]
+fn a_slot_places_along_and_across_the_corner_frame() {
+    // The right profile's outer face at its bottom corner: z out of the face (+X), the frame's x
+    // along the face's other edge (+Y) and y up the picked edge (+Z), so along is the second value.
+    let corner = Corner { origin: Vec3::new(900.0, 0.0, 0.0), x: Vec3::Y, y: Vec3::Z, z: Vec3::X, along_x: false };
+    let p = place(&corner, 600.0, 35.0, 0);
+    assert_eq!(p.values, [35.0, 600.0, 90.0], "across, along, a quarter turn so the part runs up the edge");
+    assert!(near(p.origin, Vec3::new(900.0, 35.0, 600.0)) && near(p.x, Vec3::Z) && near(p.y, -Vec3::Y) && near(p.z, Vec3::X), "{p:?}");
+    let p = place(&corner, 600.0, 35.0, 180);
+    assert_eq!(p.values[2], -90.0);
+    assert!(near(p.x, -Vec3::Z), "turned back down the edge: {p:?}");
+    // The top corner: x runs down the picked edge, so along is the first value and no turn.
+    let corner = Corner { origin: Vec3::new(900.0, 0.0, 1200.0), x: -Vec3::Z, y: Vec3::Y, z: Vec3::X, along_x: true };
+    let p = place(&corner, 100.0, 35.0, 0);
+    assert_eq!(p.values, [100.0, 35.0, 0.0]);
+    assert!(near(p.origin, Vec3::new(900.0, 35.0, 1100.0)) && near(p.x, -Vec3::Z) && near(p.y, Vec3::Y), "{p:?}");
+    let p = place(&corner, 0.0, 35.0, 270);
+    assert_eq!(p.values[2], -90.0);
+    assert!(near(p.x, -Vec3::Y) && near(p.y, -Vec3::Z), "{p:?}");
+    assert_eq!(turn_degrees(false, 270), 0);
+    assert_eq!(turn_degrees(true, 90), 90);
+    assert_eq!(turn_degrees(false, 180), -90);
+
+    let (values, limits) = joint_values(false, "KOL", &Across::Held(35.0), 90.0);
+    assert_eq!(values, [json!(35.0), json!("KOL"), json!(90.0)]);
+    assert_eq!(limits, [json!([35.0, 35.0]), Value::Null, json!([90.0, 90.0])]);
+    let (values, limits) = joint_values(true, "0", &Across::Expression("W / 2".into()), 0.0);
+    assert_eq!(values, [json!("0"), json!("W / 2"), json!(0.0)]);
+    assert_eq!(limits, [Value::Null, Value::Null, json!([0.0, 0.0])], "an expression across drives it, unheld");
+
+    assert_eq!(slug("Sağ üst köşe"), "sag-ust-kose");
+    assert_eq!(slug("Ek kilit 1"), "ek-kilit-1");
+    assert_eq!(slug("İç  KÖŞE!"), "ic-kose");
+    assert_eq!(slug("…"), "slot");
+}
+
+#[test]
+fn slots_are_kept_in_the_design_and_follow_its_parameters() {
+    let mut s = sash();
+    let undo = s.undo.len();
+    let p = json!({"label": "Kol", "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600], "along": "KOL"});
+    let mut preview = p.clone();
+    preview["preview"] = json!(true);
+    let r = s.execute("hardware.slot.add", &preview).unwrap();
+    assert_eq!((r["preview"].as_bool(), s.undo.len()), (Some(true), undo), "a preview changes nothing: {r}");
+    assert!(s.doc.metadata.get(SLOTS_KEY).is_none());
+
+    let r = s.execute("hardware.slot.add", &p).unwrap();
+    assert_eq!(s.undo.len(), undo + 1, "one undo step");
+    assert_eq!(r["slot"]["id"], "kol");
+    assert_eq!((r["slot"]["along"].as_str(), r["slot"]["across"].as_str(), r["slot"]["angle"].as_u64()), (Some("KOL"), Some("middle"), Some(0)));
+    assert!(near(v3(&r["frame"]["origin"]), Vec3::new(900.0, 35.0, 600.0)), "{r}");
+    assert!(near(v3(&r["frame"]["z"]), Vec3::X) && near(v3(&r["frame"]["x"]), Vec3::Z), "{r}");
+    assert_eq!(r["values"], json!([35.0, "KOL", 90.0]), "{r}");
+    assert_eq!(r["limits"], json!([[35.0, 35.0], null, [90.0, 90.0]]), "{r}");
+    assert!(near(v3(&r["joint_a"]["corner"]), Vec3::new(900.0, 0.0, 0.0)) && r["joint_a"]["occurrence"] == 0, "{r}");
+    let stored = s.doc.metadata.get(SLOTS_KEY).unwrap().clone();
+    assert_eq!((stored["version"].as_u64(), &stored["placed"]), (Some(1), &json!([])), "{stored}");
+    assert!(stored["slots"][0]["origin"]["snap"].is_object(), "the origin is kept with its names: {stored}");
+
+    let r = s
+        .execute(
+            "hardware.slot.add",
+            &json!({"label": "Sağ üst köşe", "group": "Köşe aktarma", "edge": [900, 0, 600], "corner": [900, 0, 1200], "on": [900, 35, 600], "when": "FFH > 1200 mm"}),
+        )
+        .unwrap();
+    assert_eq!((r["slot"]["id"].as_str(), r["active"].as_bool()), (Some("sag-ust-kose"), Some(false)), "{r}");
+    assert_eq!(r["values"], json!(["0", 35.0, 0.0]), "x runs down the edge from the top corner: {r}");
+    assert!(near(v3(&r["frame"]["origin"]), Vec3::new(900.0, 35.0, 1200.0)) && near(v3(&r["frame"]["x"]), -Vec3::Z), "{r}");
+
+    // The slots follow the parameters: the face moves and grows, found again by name.
+    s.execute("parameters.change", &json!({"changes": {"FFH": "1500 mm", "FFB": "1000 mm", "KOL": "700 mm"}})).unwrap();
+    let listed = slots(&mut s);
+    assert_eq!(listed.len(), 2);
+    let (kol, top) = (&listed[0], &listed[1]);
+    assert!(kol.get("error").is_none() && kol["active"] == true, "{kol}");
+    assert!(near(v3(&kol["frame"]["origin"]), Vec3::new(1000.0, 35.0, 700.0)), "{kol}");
+    assert!(near(v3(&top["frame"]["origin"]), Vec3::new(1000.0, 35.0, 1500.0)) && top["active"] == true, "{top}");
+    assert!(near(v3(&top["joint_a"]["corner"]), Vec3::new(1000.0, 0.0, 1500.0)), "{top}");
+    assert!(near(v3(&top["joint_a"]["edge"]), Vec3::new(1000.0, 0.0, 750.0)), "the edge's middle: {top}");
+    // joint_a is an origin joint.create reads back to the same corner, by the same names.
+    let back = super::super::joints::origin_param(&s, Some(&top["joint_a"]), "test").unwrap();
+    let kept = serde_json::from_value::<HardwareSlot>(top.clone()).unwrap().origin;
+    let names = |o: &JointOrigin| match &o.snap {
+        Snap::Edge { edge, face, corner, .. } => (edge.clone(), face.clone(), corner.clone()),
+        _ => (None, None, None),
+    };
+    assert_eq!(names(&back), names(&kept), "the same names");
+    assert_eq!(s.execute("hardware.slot.list", &json!({"group": "Köşe aktarma"})).unwrap()["slots"].as_array().unwrap().len(), 1);
+
+    // Edit and delete: one undo step each.
+    let undo = s.undo.len();
+    let r = s.execute("hardware.slot.edit", &json!({"id": "kol", "along": "KOL - 50 mm", "angle": 180, "flip": true, "label": "Kol rozet"})).unwrap();
+    assert_eq!(s.undo.len(), undo + 1);
+    assert_eq!((r["slot"]["label"].as_str(), r["slot"]["flip"].as_bool()), (Some("Kol rozet"), Some(true)));
+    assert!(near(v3(&r["frame"]["origin"]), Vec3::new(1000.0, 35.0, 650.0)) && near(v3(&r["frame"]["x"]), -Vec3::Z), "{r}");
+    assert_eq!(r["values"], json!([35.0, "KOL - 50 mm", -90.0]), "{r}");
+    let r = s.execute("hardware.slot.edit", &json!({"id": "sag-ust-kose", "when": null})).unwrap();
+    assert_eq!((r["slot"]["when"].clone(), r["active"].as_bool()), (Value::Null, Some(true)));
+    let r = s.execute("hardware.slot.delete", &json!({"id": "kol"})).unwrap();
+    assert_eq!((r["slots"].as_u64(), s.undo.len()), (Some(1), undo + 3));
+    assert_eq!(slots(&mut s).len(), 1);
+}
+
+/// The Çift Açılım template's sash (its four profiles, as the plugin's boxes stand) takes the
+/// placement slots the plugin's template adds, each where its hardware goes, and they follow the
+/// sash's size.
+#[test]
+fn the_tilt_and_turn_templates_slots_sit_where_its_hardware_goes() {
+    let mut s = Session::default();
+    for (name, expression) in [("FFH", "1400 mm"), ("FFB", "900 mm"), ("KOL", "600 mm"), ("KA", "120 mm"), ("IS", "300 mm")] {
+        s.execute("parameters.add", &json!({"name": name, "expression": expression})).unwrap();
+    }
+    for (name, size, center) in [
+        ("Kanat sol", ["62 mm", "70 mm", "FFH"], ["31 mm", "35 mm", "FFH/2"]),
+        ("Kanat sag", ["62 mm", "70 mm", "FFH"], ["FFB - 31 mm", "35 mm", "FFH/2"]),
+        ("Kanat ust", ["FFB - 124 mm", "70 mm", "62 mm"], ["FFB/2", "35 mm", "FFH - 31 mm"]),
+        ("Kanat alt", ["FFB - 124 mm", "70 mm", "62 mm"], ["FFB/2", "35 mm", "31 mm"]),
+    ] {
+        s.execute(
+            "solid.box",
+            &json!({"length": size[0], "width": size[1], "height": size[2], "center": center, "name": name, "body_name": name, "operation": "new"}),
+        )
+        .unwrap();
+    }
+    // The template's slots (aksesuar-eklentisi/src/sablon.rs, yerlesim_noktalari) at FFH 1400, FFB 900.
+    let slot = |id: &str, corner: [f64; 3], edge: [f64; 3], on: [f64; 3], along: &str| {
+        json!({"id": id, "label": id, "group": "g", "occurrence": 0, "edge": edge, "corner": corner, "on": on, "along": along,
+            "across": "middle", "angle": 0, "flip": false})
+    };
+    let mut lock = slot("ek-kilit-1", [0.0, 0.0, 0.0], [0.0, 0.0, 700.0], [0.0, 35.0, 700.0], "(KA + KOL - IS/2)/2");
+    lock["when"] = json!("FFH > 1200 mm");
+    for p in [
+        slot("sol-alt-kose", [0.0, 0.0, 0.0], [0.0, 0.0, 700.0], [0.0, 35.0, 700.0], "0"),
+        slot("sol-ust-kose", [0.0, 0.0, 1400.0], [0.0, 0.0, 700.0], [0.0, 35.0, 700.0], "0"),
+        slot("sag-ust-kose", [900.0, 0.0, 1400.0], [900.0, 0.0, 700.0], [900.0, 35.0, 700.0], "0"),
+        slot("sag-alt-kose", [900.0, 0.0, 0.0], [900.0, 0.0, 700.0], [900.0, 35.0, 700.0], "0"),
+        slot("alt-mentese", [900.0, 0.0, 0.0], [869.0, 0.0, 0.0], [869.0, 35.0, 0.0], "0"),
+        slot("ust-mentese", [900.0, 0.0, 1400.0], [869.0, 0.0, 1400.0], [869.0, 35.0, 1400.0], "0"),
+        slot("makas", [838.0, 0.0, 1400.0], [450.0, 0.0, 1400.0], [450.0, 35.0, 1400.0], "0"),
+        slot("kol", [0.0, 0.0, 0.0], [0.0, 0.0, 700.0], [31.0, 0.0, 700.0], "KOL"),
+        lock,
+    ] {
+        s.execute("hardware.slot.add", &p).unwrap_or_else(|e| panic!("{p}: {e}"));
+    }
+    let at = |s: &mut Session| -> Vec<(String, Vec3, Vec3, bool)> {
+        slots(s)
+            .iter()
+            .map(|v| {
+                assert!(v.get("error").is_none(), "{v}");
+                (v["id"].as_str().unwrap().to_owned(), v3(&v["frame"]["origin"]), v3(&v["frame"]["z"]), v["active"].as_bool().unwrap())
+            })
+            .collect()
+    };
+    let expected = [
+        ("sol-alt-kose", Vec3::new(0.0, 35.0, 0.0), -Vec3::X),
+        ("sol-ust-kose", Vec3::new(0.0, 35.0, 1400.0), -Vec3::X),
+        ("sag-ust-kose", Vec3::new(900.0, 35.0, 1400.0), Vec3::X),
+        ("sag-alt-kose", Vec3::new(900.0, 35.0, 0.0), Vec3::X),
+        ("alt-mentese", Vec3::new(900.0, 35.0, 0.0), -Vec3::Z),
+        ("ust-mentese", Vec3::new(900.0, 35.0, 1400.0), Vec3::Z),
+        ("makas", Vec3::new(838.0, 35.0, 1400.0), Vec3::Z),
+        ("kol", Vec3::new(31.0, 0.0, 600.0), -Vec3::Y),
+        ("ek-kilit-1", Vec3::new(0.0, 35.0, 285.0), -Vec3::X),
+    ];
+    let listed = at(&mut s);
+    assert_eq!(listed.len(), expected.len());
+    for ((id, origin, z, active), (want, place, out)) in listed.iter().zip(expected) {
+        assert_eq!(id, want);
+        assert!(near(*origin, place) && near(*z, out) && *active, "{id}: {origin:?} z {z:?}");
+    }
+    // A smaller, wider sash: the slots move with it, and the extra lock is out of use.
+    s.execute("parameters.change", &json!({"changes": {"FFH": "1200 mm", "FFB": "1000 mm"}})).unwrap();
+    let listed = at(&mut s);
+    let find = |id: &str| listed.iter().find(|x| x.0 == id).unwrap().clone();
+    assert!(near(find("sag-ust-kose").1, Vec3::new(1000.0, 35.0, 1200.0)), "{:?}", find("sag-ust-kose"));
+    assert!(near(find("makas").1, Vec3::new(938.0, 35.0, 1200.0)), "{:?}", find("makas"));
+    assert!(near(find("alt-mentese").1, Vec3::new(1000.0, 35.0, 0.0)), "{:?}", find("alt-mentese"));
+    assert!(!find("ek-kilit-1").3 && find("kol").3);
+}
+
+#[test]
+fn a_slot_that_breaks_its_rules_is_refused_and_one_gone_bad_is_an_error_on_it_only() {
+    let mut s = sash();
+    // Other tools' keys and the placed parts are kept as they are.
+    s.execute("document.metadata.set", &json!({"key": SLOTS_KEY, "value": {"version": 1, "slots": [], "placed": [{"slot": "x"}], "note": "kept"}}))
+        .unwrap();
+    let ok = json!({"label": "Alt menteşe", "group": "Menteşe grubu", "edge": [900, 0, 600], "corner": [900, 0, 0]});
+    let with = |key: &str, value: Value| {
+        let mut p = ok.clone();
+        p[key] = value;
+        p
+    };
+    let undo = s.undo.len();
+    for p in [
+        with("along", json!("NOPE")),
+        with("across", json!("MISSING + 1 mm")),
+        with("angle", json!(45)),
+        with("when", json!("NOPE > 1")),
+        with("when", json!("FFH")),
+        with("label", json!("  ")),
+        with("label", json!("a\u{7}")),
+        with("id", json!("Not A Slug")),
+        with("edge", json!([2000, 0, 0])),
+        with("edge", json!([900, 0])),
+        with("corner", json!([1e12, 0, 0])),
+        with("colour", json!("red")),
+    ] {
+        assert!(s.execute("hardware.slot.add", &p).is_err(), "{p}");
+    }
+    assert_eq!(s.undo.len(), undo, "nothing changed");
+    s.execute("hardware.slot.add", &with("id", json!("alt"))).unwrap();
+    assert!(s.execute("hardware.slot.add", &with("id", json!("alt"))).is_err(), "ids are unique");
+    let r = s.execute("hardware.slot.add", &ok).unwrap();
+    assert_eq!(r["slot"]["id"], "alt-mentese");
+    let stored = s.doc.metadata.get(SLOTS_KEY).unwrap().clone();
+    assert_eq!((&stored["placed"], &stored["note"]), (&json!([{"slot": "x"}]), &json!("kept")), "{stored}");
+
+    // A slot whose expression no longer evaluates is listed with its error; the others are fine.
+    let mut broken = stored.clone();
+    broken["slots"][0]["along"] = json!("GONE");
+    broken["slots"].as_array_mut().unwrap().push(json!({"id": "odd", "label": 3}));
+    s.execute("document.metadata.set", &json!({"key": SLOTS_KEY, "value": broken})).unwrap();
+    let r = s.execute("hardware.slot.list", &json!({})).unwrap();
+    let listed = r["slots"].as_array().unwrap();
+    assert_eq!(listed.len(), 2, "{r}");
+    assert!(listed[0]["error"].as_str().is_some_and(|e| e.contains("along")) && listed[0]["frame"].is_null() && listed[0]["active"] == false, "{r}");
+    assert!(listed[1].get("error").is_none() && listed[1]["frame"].is_object(), "{r}");
+    assert_eq!(r["unreadable"].as_array().map(Vec::len), Some(1), "{r}");
+    // The unreadable entry stays as it is through a change.
+    s.execute("hardware.slot.delete", &json!({"id": "alt"})).unwrap();
+    assert_eq!(s.doc.metadata.get(SLOTS_KEY).unwrap()["slots"].as_array().map(Vec::len), Some(2));
+    assert!(s.execute("hardware.slot.edit", &json!({"id": "missing", "label": "x"})).is_err());
+    assert!(s.execute("hardware.slot.edit", &json!({"id": "alt-mentese", "edge": [900, 0, 600]})).is_err(), "edge needs corner");
+    assert!(s.execute("hardware.slot.delete", &json!({"id": "missing"})).is_err());
+
+    // A slot list in another format is never changed.
+    s.execute("document.metadata.set", &json!({"key": SLOTS_KEY, "value": {"version": 2, "slots": []}})).unwrap();
+    assert!(s.execute("hardware.slot.list", &json!({})).is_err());
+    assert!(s.execute("hardware.slot.add", &ok).is_err());
+}

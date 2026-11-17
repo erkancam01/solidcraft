@@ -59,7 +59,16 @@ fn the_template_sends_the_reference_design_upright_then_its_locks_bars_and_rules
             "parameters.add",
             "config.configure",
             "config.rule",
-            "config.activate"
+            "config.activate",
+            "hardware.slot.add",
+            "hardware.slot.add",
+            "hardware.slot.add",
+            "hardware.slot.add",
+            "hardware.slot.add",
+            "hardware.slot.add",
+            "hardware.slot.add",
+            "hardware.slot.add",
+            "hardware.slot.add"
         ]
     );
     altin("cift_acilim_komutlar.json", &json!(sent));
@@ -69,12 +78,47 @@ fn the_template_sends_the_reference_design_upright_then_its_locks_bars_and_rules
     assert_eq!(out["ek_kilit"], 120);
     assert_eq!(out["cocuk_kilidi"], 123);
     assert_eq!(out["tij_sol_alt"], 116);
-    let configure = &ana.komutlar[ana.komutlar.len() - 3].1;
-    assert_eq!(configure["features"], json!(ANAHTARLI));
-    let rule = &ana.komutlar[ana.komutlar.len() - 2].1;
-    assert_eq!(rule, &kurallar(&f));
-    assert_eq!(ana.komutlar.last().unwrap().1, json!({"row": "Default"}));
+    assert_eq!(out["yerlesim_noktalari"], 9);
+    let params = |name: &str| ana.komutlar.iter().find(|(c, _)| c == name).unwrap().1.clone();
+    assert_eq!(params("config.configure")["features"], json!(ANAHTARLI));
+    assert_eq!(params("config.rule"), kurallar(&f));
+    assert_eq!(params("config.activate"), json!({"row": "Default"}));
+    let slots: Vec<Value> = ana.komutlar.iter().filter(|(c, _)| c == "hardware.slot.add").map(|(_, p)| p.clone()).collect();
+    assert_eq!(slots, yerlesim_noktalari(&Girdi { ffh: 1200.0, ffb: 900.0, kol: 600.0, cocuk_kilidi: false }));
     crate::tests::commands_are_granted("cift-acilim-sablonu", &ana.adlar());
+}
+
+#[test]
+fn the_slots_sit_on_the_profiles_where_the_template_puts_the_hardware() {
+    let g = Girdi { ffh: 1400.0, ffb: 900.0, kol: 600.0, cocuk_kilidi: false };
+    let slots = yerlesim_noktalari(&g);
+    let slot = |id: &str| slots.iter().find(|s| s["id"] == id).unwrap().clone();
+    let ids: Vec<&str> = slots.iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["sol-alt-kose", "sol-ust-kose", "sag-ust-kose", "sag-alt-kose", "alt-mentese", "ust-mentese", "makas", "kol", "ek-kilit-1"]);
+    for s in &slots {
+        assert_eq!((s["occurrence"].as_u64(), s["across"].as_str(), s["angle"].as_u64()), (Some(0), Some("middle"), Some(0)), "{s}");
+        // The corner is an end of the edge through the edge point: the two share all but one coordinate.
+        let (c, e) = (s["corner"].as_array().unwrap(), s["edge"].as_array().unwrap());
+        assert_eq!(c.iter().zip(e).filter(|(a, b)| a != b).count(), 1, "{s}");
+    }
+    let groups = |group: &str| slots.iter().filter(|s| s["group"] == group).count();
+    assert_eq!((groups(KOSE_AKTARMA), groups(MENTESE), groups(MAKAS_KOL), groups(KILIT)), (4, 2, 2, 1));
+    // The four corners on the stiles' outer faces (x = 0 and x = FFB), up the room-side edge.
+    assert_eq!(slot("sag-ust-kose")["corner"], json!([900.0, 0.0, 1400.0]));
+    assert_eq!(slot("sag-ust-kose")["on"], json!([900.0, 35.0, 700.0]));
+    assert_eq!(slot("sol-alt-kose")["edge"], json!([0.0, 0.0, 700.0]));
+    // The hinges on the hinge-side stile's ends, the stay on the top rail from its hinge-side end.
+    assert_eq!(slot("alt-mentese")["on"], json!([869.0, 35.0, 0.0]));
+    assert_eq!(slot("ust-mentese")["corner"], json!([900.0, 0.0, 1400.0]));
+    assert_eq!(slot("makas")["corner"], json!([838.0, 0.0, 1400.0]));
+    assert_eq!(slot("makas")["edge"], json!([450.0, 0.0, 1400.0]));
+    // The handle at KOL on the room face, where the rosette is; the extra lock where its box is.
+    assert_eq!((slot("kol")["along"].as_str(), slot("kol")["on"].clone()), (Some("KOL"), json!([31.0, 0.0, 700.0])));
+    let ek = slot("ek-kilit-1");
+    let lock = govde_komutlari(&g).into_iter().find(|c| c["params"]["name"] == EK_KILIT).unwrap();
+    assert_eq!(ek["along"], lock["params"]["center"][2], "the lock box's own height expression");
+    assert_eq!(ek["when"], "FFH > 1200 mm");
+    assert!(slots.iter().filter(|s| s["id"] != "ek-kilit-1").all(|s| s.get("when").is_none()));
 }
 
 #[test]
