@@ -1,0 +1,243 @@
+[
+  {
+    "command": "hardware.slot.list",
+    "params": {}
+  },
+  {
+    "command": "config.rules",
+    "params": {}
+  },
+  {
+    "command": "component.list",
+    "params": {}
+  },
+  {
+    "command": "document.inspect",
+    "params": {
+      "bodies": true,
+      "timeline": "summary"
+    }
+  },
+  {
+    "command": "joint.list",
+    "params": {}
+  },
+  {
+    "command": "joint.inspect",
+    "params": {
+      "joint": 43
+    }
+  },
+  {
+    "command": "component.paste_new",
+    "params": {
+      "component": 26,
+      "in_place": true,
+      "occurrence": 42
+    }
+  },
+  {
+    "command": "selection.delete",
+    "params": {
+      "occurrences": [
+        42
+      ]
+    }
+  },
+  {
+    "command": "joint.create",
+    "params": {
+      "a": {
+        "corner": [
+          0,
+          0,
+          0
+        ],
+        "edge": [
+          0,
+          0,
+          650
+        ],
+        "occurrence": 0,
+        "on": [
+          0,
+          35.8,
+          34.2
+        ]
+      },
+      "angle": 0,
+      "b": {
+        "frame": {
+          "origin": [
+            0.0,
+            35.0,
+            650.0
+          ],
+          "x": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "z": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        "occurrence": 102
+      },
+      "flip": false,
+      "limits": [
+        null,
+        [
+          35.0,
+          35.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "name": "Kilit orta: YMB.00146",
+      "offset": 0,
+      "quiet": true,
+      "type": "planar",
+      "values": [
+        "FFH/2",
+        35.0,
+        0.0
+      ]
+    }
+  },
+  {
+    "command": "document.metadata.set",
+    "params": {
+      "key": "tr.aksesuar.yerlesim",
+      "value": {
+        "placed": [
+          {
+            "component": 26,
+            "joint": 41,
+            "occurrence": 27,
+            "path": "C:\\kutuphane\\Köşe aktarma\\YMB.00146 - TIRNAKLI KÖŞE AKTARMA.STEP",
+            "slot": "sol-alt-kose"
+          },
+          {
+            "component": 101,
+            "joint": 106,
+            "occurrence": 102,
+            "path": "C:\\kutuphane\\Köşe aktarma\\YMB.00146 - TIRNAKLI KÖŞE AKTARMA.STEP",
+            "slot": "kilit-orta"
+          },
+          {
+            "component": 48,
+            "joint": 51,
+            "occurrence": 50,
+            "path": "C:\\kutuphane\\Kilit\\KILIT.STEP",
+            "slot": "kilit-ust"
+          }
+        ],
+        "slots": [],
+        "version": 1
+      }
+    }
+  },
+  {
+    "command": "parameters.add",
+    "params": {
+      "comment": "Koşul: Kilit üst (Aksesuar, Koşullu Parçaları Güncelle)",
+      "expression": "and(FFH > 1400 mm, FFB > 800 mm)",
+      "name": "KOSUL_KILIT_UST",
+      "unit": ""
+    }
+  },
+  {
+    "command": "config.configure",
+    "params": {
+      "features": [
+        "103",
+        "52"
+      ]
+    }
+  },
+  {
+    "command": "config.rule",
+    "params": {
+      "rules": [
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "gt",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 103,
+            "type": "drive_suppression",
+            "value": false
+          },
+          "enabled": true,
+          "id": "kosul-kilit-orta-on",
+          "name": "Kilit orta: FFH > 1200 mm iken var"
+        },
+        {
+          "condition": {
+            "expression": "1200 mm",
+            "operator": "le",
+            "parameter": "FFH",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 103,
+            "type": "drive_suppression",
+            "value": true
+          },
+          "enabled": true,
+          "id": "kosul-kilit-orta-off",
+          "name": "Kilit orta: FFH > 1200 mm değilken yok"
+        },
+        {
+          "condition": {
+            "expression": "0",
+            "operator": "ne",
+            "parameter": "KOSUL_KILIT_UST",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 52,
+            "type": "drive_suppression",
+            "value": false
+          },
+          "enabled": true,
+          "id": "kosul-kilit-ust-on",
+          "name": "Kilit üst: and(FFH > 1400 mm, FFB > 800 mm) iken var"
+        },
+        {
+          "condition": {
+            "expression": "0",
+            "operator": "eq",
+            "parameter": "KOSUL_KILIT_UST",
+            "type": "parameter"
+          },
+          "effect": {
+            "feature": 52,
+            "type": "drive_suppression",
+            "value": true
+          },
+          "enabled": true,
+          "id": "kosul-kilit-ust-off",
+          "name": "Kilit üst: and(FFH > 1400 mm, FFB > 800 mm) değilken yok"
+        }
+      ]
+    }
+  },
+  {
+    "command": "timeline.suppress",
+    "params": {
+      "features": [
+        52
+      ],
+      "suppressed": true
+    }
+  }
+]

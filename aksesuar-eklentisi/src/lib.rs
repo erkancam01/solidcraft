@@ -10,6 +10,8 @@ pub mod hata;
 pub mod ifade;
 pub mod json;
 pub mod kanal;
+pub mod kosullu;
+pub mod olculer;
 pub mod ozellikler;
 pub mod sablon;
 pub mod tij;
@@ -26,7 +28,7 @@ pub use hata::Hata;
 pub const MANIFEST: &str = include_str!("../plugin.json");
 
 /// The entries, by their manifest names.
-pub const GIRISLER: &[&str] = &["cift-acilim-sablonu", "kanala-yerlestir", "ozellikler", "tij-listesi"];
+pub const GIRISLER: &[&str] = &["cift-acilim-sablonu", "kanala-yerlestir", "kosullu-parcalar", "olculer", "ozellikler", "tij-listesi"];
 
 /// What a plugin entry can reach: SolidCraft's commands and the folders the user granted.
 pub trait Ana {
@@ -49,6 +51,8 @@ pub fn calistir(ana: &mut dyn Ana, giris: &str, parametreler: &Value) -> Result<
         "kanala-yerlestir" => kanal::calistir(ana, p),
         "tij-listesi" => tij::calistir(ana, p),
         "cift-acilim-sablonu" => sablon::calistir(ana, p),
+        "kosullu-parcalar" => kosullu::calistir(ana, p),
+        "olculer" => olculer::calistir(ana, p),
         "ozellikler" => Ok(ozellikler::sonuc()),
         other => Err(Hata::girdi("entry", format!("Bilinmeyen komut: `{}`.", json::kisalt(other, 64)))),
     }

@@ -8,11 +8,11 @@ exclude = ["harness"]
 
 [package]
 name = "aksesuar"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
-description = "Window-hardware helpers for SolidCraft: place a part in a sash groove, tie-bar cut list, tilt-and-turn template"
+description = "Window-hardware helpers for SolidCraft: place a part in a sash groove, tie-bar cut list, tilt-and-turn template, conditional parts, size changes"
 publish = false
 
 [lib]

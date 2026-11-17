@@ -353,16 +353,7 @@ pub fn yerlesim_noktalari(g: &Girdi) -> Vec<Value> {
         nokta("ust-mentese", "Üst menteşe", MENTESE, [b, 0.0, h], [ic, 0.0, h], [ic, yari, h], "0", None),
         nokta("makas", "Makas", MAKAS_KOL, [b - PROFIL, 0.0, h], [b / 2.0, 0.0, h], [b / 2.0, yari, h], "0", None),
         nokta("kol", "Kol", MAKAS_KOL, [0.0, 0.0, 0.0], [0.0, 0.0, orta], [PROFIL / 2.0, 0.0, orta], "KOL", None),
-        nokta(
-            "ek-kilit-1",
-            "Ek kilit 1",
-            KILIT,
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, orta],
-            [0.0, yari, orta],
-            "(KA + KOL - IS/2)/2",
-            Some("FFH > 1200 mm"),
-        ),
+        nokta("ek-kilit-1", "Ek kilit 1", KILIT, [0.0, 0.0, 0.0], [0.0, 0.0, orta], [0.0, yari, orta], "(KA + KOL - IS/2)/2", Some("FFH > 1200 mm")),
     ]
 }
 

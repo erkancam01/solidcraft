@@ -11,7 +11,7 @@ fn manifest() -> Value {
 
 /// Commands SolidCraft marks read (`.read_only()` in crates/engine/src/cmd): the only ones a
 /// read entry may call.
-const READ_COMMANDS: &[&str] = &["document.inspect", "model.edges", "model.faces"];
+const READ_COMMANDS: &[&str] = &["document.inspect", "hardware.slot.list", "model.edges", "model.faces"];
 
 #[test]
 fn the_host_accepts_the_manifest() {
@@ -94,7 +94,18 @@ fn the_help_entry_calls_nothing_and_names_every_entry() {
     let mut ana = TestAna::new(|_, _| panic!("no commands"));
     let out = calistir(&mut ana, "ozellikler", &Value::Null).unwrap();
     let text = out.as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect::<Vec<_>>().join("\n");
-    for title in ["Kanala Yerleştir", "Tij ve Malzeme Listesi", "Çift Açılım Şablonu", "Aksesuar Özellikleri", "EK KILIT 1", "COCUK KILIDI"] {
+    for title in [
+        "Kanala Yerleştir",
+        "Tij ve Malzeme Listesi",
+        "Çift Açılım Şablonu",
+        "Koşullu Parçaları Güncelle",
+        "Ölçüleri Değiştir",
+        "Aksesuar Özellikleri",
+        "EK KILIT 1",
+        "COCUK KILIDI",
+        "kosul-<nokta>-on",
+        "KOSUL_<NOKTA>",
+    ] {
         assert!(text.contains(title), "{title}");
     }
 }

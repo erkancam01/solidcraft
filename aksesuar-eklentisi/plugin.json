@@ -1,8 +1,8 @@
 {
   "id": "aksesuar",
   "name": "Aksesuar",
-  "version": "0.1.3",
-  "description": "Pencere aksesuarı yardımcıları: aksesuarı kanala yerleştirme, tij kesim ve malzeme listesi (CSV), çift açılım kanat şablonu.",
+  "version": "0.1.4",
+  "description": "Pencere aksesuarı yardımcıları: aksesuarı kanala yerleştirme, tij kesim ve malzeme listesi (CSV), çift açılım kanat şablonu, koşullu parçalar ve ölçü değiştirme.",
   "capabilities": ["commands@0.1"],
   "runtime": {
     "module": "aksesuar.wasm",
@@ -71,6 +71,32 @@
         }
       },
       {
+        "name": "kosullu-parcalar",
+        "effect": "edit",
+        "slots": [{"kind": "menu", "name": "Koşullu Parçaları Güncelle"}, {"kind": "ribbon", "name": "Koşullu Parçaları Güncelle"}],
+        "input_schema": {"type": "object", "properties": {}}
+      },
+      {
+        "name": "olculer",
+        "effect": "edit",
+        "slots": [{"kind": "menu", "name": "Ölçüleri Değiştir"}, {"kind": "ribbon", "name": "Ölçüleri Değiştir"}],
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "FFH": {"type": "number", "title": "FFH (kanat yüksekliği)", "description": "Boş bırakırsanız değişmez.", "minimum": 600, "maximum": 3000, "unit": "mm"},
+            "FFB": {"type": "number", "title": "FFB (kanat genişliği)", "description": "Boş bırakırsanız değişmez.", "minimum": 400, "maximum": 2000, "unit": "mm"},
+            "KOL": {"type": "number", "title": "KOL (kol yüksekliği)", "description": "Boş bırakırsanız değişmez.", "minimum": 273, "maximum": 2727, "unit": "mm"},
+            "cocuk_kilidi": {
+              "type": "string",
+              "title": "Çocuk kilidi",
+              "description": "CK parametresi: Evet 1, Hayır 0.",
+              "oneOf": [{"const": "degistirme", "title": "Değiştirme"}, {"const": "evet", "title": "Evet"}, {"const": "hayir", "title": "Hayır"}],
+              "default": "degistirme"
+            }
+          }
+        }
+      },
+      {
         "name": "ozellikler",
         "effect": "read",
         "slots": [{"kind": "menu", "name": "Aksesuar Özellikleri"}, {"kind": "ribbon", "name": "Aksesuar Özellikleri"}],
@@ -81,19 +107,28 @@
       "appearance.assign",
       "component.from_bodies",
       "component.list",
+      "component.paste_new",
       "config.activate",
       "config.configure",
       "config.rule",
+      "config.rules",
       "document.inspect",
+      "document.metadata.set",
       "hardware.slot.add",
+      "hardware.slot.list",
       "joint.create",
+      "joint.inspect",
+      "joint.list",
       "model.edges",
       "model.faces",
       "occurrence.ground",
       "parameters.add",
+      "parameters.change",
       "parameters.list",
+      "selection.delete",
       "selection.get",
-      "solid.box"
+      "solid.box",
+      "timeline.suppress"
     ],
     "limits": {"fuel": 5000000000, "memory_mib": 64, "deadline_ms": 30000},
     "permissions": {"files": [{"name": "cikti", "write": true}]}

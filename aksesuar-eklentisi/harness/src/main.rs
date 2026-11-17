@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use craft_plugin::{CommandSchema, Effect, FileGrant, HostError, Manifest, PluginHost};
 use serde_json::{Value, json};
 
-const READ: &[&str] = &["document.inspect", "model.edges", "model.faces"];
+const READ: &[&str] = &["document.inspect", "hardware.slot.list", "model.edges", "model.faces"];
 
 struct Host {
     commands: Vec<String>,
@@ -109,7 +109,10 @@ impl PluginHost for Host {
                 json!({"feature": self.next_feature, "name": args["name"]})
             }
             ("config.configure", _) => json!({"active": "Default", "rows": [{"id": 1, "name": "Default"}]}),
-            ("parameters.add" | "appearance.assign" | "config.rule" | "config.activate", _) => json!({}),
+            // The template's slots, none with a part on it.
+            ("hardware.slot.list", _) => json!({"slots": [{"id": "ek-kilit-1", "label": "Ek kilit 1", "when": "FFH > 1200 mm", "active": false}]}),
+            ("config.rules", _) => json!({"rules": [], "rows": [{"id": 1, "name": "Default"}]}),
+            ("parameters.add" | "appearance.assign" | "config.rule" | "config.activate" | "hardware.slot.add", _) => json!({}),
             _ => return Err(HostError::CommandFailed { command: name.into(), reason: "not scripted".into() }),
         })
     }
@@ -185,12 +188,13 @@ fn run() -> Result<(), String> {
     check(host.sent.is_empty() && lines.as_array().is_some_and(|l| l.len() > 10), "ozellikler returns its help lines")?;
 
     // The template: 1 + 13 parameters + 20 boxes and looks, 3 more parameters + 4 boxes and
-    // looks + CK + configure, rules, activate.
+    // looks + CK + configure, rules, activate, then its 9 placement slots.
     let (host, r) = entry(json!({}), "cift-acilim-sablonu", json!({"FFH": 1400, "FFB": 1100, "KOL": 700, "cocuk_kilidi": true}));
     let v = r.map_err(|e| format!("cift-acilim-sablonu: {e}"))?;
     let names = host.names();
-    check(names.len() == 69, &format!("template sends 69 commands, sent {}", names.len()))?;
-    check(names.last() == Some(&"config.activate"), "template ends by activating its configuration")?;
+    check(names.len() == 78, &format!("template sends 78 commands, sent {}", names.len()))?;
+    check(names.get(68) == Some(&"config.activate"), "template activates its configuration")?;
+    check(names[69..].iter().all(|n| *n == "hardware.slot.add"), "template ends with its placement slots")?;
     check(
         v["ek_kilit"] == 121 && v["cocuk_kilidi"] == 124 && v["tij_sol_alt"] == 117 && v["tij_sol_alt_1"] == 122 && v["tij_sol_alt_2"] == 123,
         &format!("template reads the switched boxes' ids: {v}"),
@@ -230,6 +234,21 @@ fn run() -> Result<(), String> {
         other => return Err(format!("empty selection should be a Turkish input error, got {other:?}")),
     }
     check(host.commits == 0 && host.rollbacks == 1, "a refused entry rolls back")?;
+
+    // Conditional parts: none placed yet, so the design is only read.
+    let (host, r) = entry(json!({}), "kosullu-parcalar", json!({}));
+    let v = r.map_err(|e| format!("kosullu-parcalar: {e}"))?;
+    check(host.names() == ["hardware.slot.list", "config.rules"], "kosullu-parcalar reads the slots and the rules")?;
+    check(v["kurallar"] == 0 && v["ozet"][0].as_str().is_some_and(|s| s.contains("yerleştirilmiş parça yok")), &format!("kosullu-parcalar: {v}"))?;
+    check(host.commits == 1 && host.rollbacks == 0, "kosullu-parcalar commits")?;
+
+    // New sizes for a design the template did not make: refused in Turkish, rolled back.
+    let (host, r) = entry(json!({}), "olculer", json!({"FFH": 1300, "cocuk_kilidi": "degistirme"}));
+    match r {
+        Err(HostError::InvalidInput { reason, .. }) if reason.contains("Önce Çift Açılım Şablonu") => {}
+        other => return Err(format!("olculer without the template's parameters should be refused, got {other:?}")),
+    }
+    check(host.names() == ["document.inspect"] && host.commits == 0 && host.rollbacks == 1, "olculer refuses before changing anything")?;
 
     // An unknown entry is refused by the runtime before the guest runs.
     let (_, r) = entry(json!({}), "yok", json!({}));
