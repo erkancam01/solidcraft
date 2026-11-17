@@ -386,3 +386,24 @@ fn an_unknown_name_or_a_number_that_is_no_occurrence_stays_a_plain_refusal() {
         assert!(e.ends_with(want), "{e}");
     }
 }
+
+/// A file from the STEP corpus (`tests/step-conformance`).
+fn corpus_step(name: &str) -> String {
+    format!("{}/../../tests/step-conformance/{name}.step", env!("CARGO_MANIFEST_DIR"))
+}
+
+#[test]
+fn an_import_beside_the_designs_own_bodies_comes_in_free() {
+    // Into an empty design the import is the base: grounded, as before.
+    let mut s = Session::default();
+    let first = run(&mut s, "file.insert_step", json!({"path": corpus_step("cylinder")}))["occurrence"].as_u64().unwrap();
+    assert!(grounded(&s, first), "the first part of an empty design is grounded");
+    let second = run(&mut s, "file.insert_step", json!({"path": corpus_step("washer")}))["occurrence"].as_u64().unwrap();
+    assert!(!grounded(&s, second), "a later part starts free");
+    // A design whose root already holds bodies (a sash modelled in the design itself): the root
+    // never moves, so even the first imported part is free and can be placed by constraints.
+    let mut s = Session::default();
+    run(&mut s, "solid.box", json!({"length": 62, "width": 70, "height": 1500}));
+    let part = run(&mut s, "file.insert_step", json!({"path": corpus_step("cylinder")}))["occurrence"].as_u64().unwrap();
+    assert!(!grounded(&s, part), "an import beside root bodies is free");
+}

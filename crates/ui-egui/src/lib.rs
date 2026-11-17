@@ -140,6 +140,7 @@ pub mod mesh_units;
 pub mod messages;
 pub(crate) mod motion;
 pub mod occurrence_drag;
+pub(crate) mod occurrence_rotate;
 #[cfg(test)]
 mod pattern_arrow_tests;
 #[cfg(test)]
@@ -248,6 +249,7 @@ mod primitive_placement;
 #[cfg(test)]
 mod primitive_units_tests;
 mod print_face_ui;
+pub(crate) mod quick_mate;
 pub(crate) mod quick_measure;
 #[cfg(test)]
 mod quick_measure_tests;
@@ -801,6 +803,8 @@ pub struct SolveApp {
     pub recovery_discard_all: bool,
     /// The selection's measurement in the view's corner (#7000).
     pub(crate) quick_measure: quick_measure::QuickMeasure,
+    /// The quick mate card over two references on two parts (SolidWorks-style context toolbar).
+    pub(crate) quick_mate: quick_mate::QuickMate,
     /// An STL or OBJ file waiting for the unit its coordinates are in (`mesh_units`).
     pub mesh_units: Option<mesh_units::Ask>,
     /// The Plugins menu and the open plugin entry dialog (`plugin_menu`).
@@ -1077,6 +1081,7 @@ impl SolveApp {
             reopen_guard_dir: None,
             recovery_discard_all: false,
             quick_measure: Default::default(),
+            quick_mate: Default::default(),
             mesh_units: None,
             plugin_menu: Default::default(),
             stand_up: None,

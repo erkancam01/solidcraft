@@ -53,7 +53,7 @@ pub fn start(_app: &SolveApp) -> Option<(Asm, Vec<SelInput>)> {
 /// plane is a plane, a round edge or face its axis, a datum axis an axis (it is drawn as an edge's
 /// middle, and its origin names the `axis`), any other edge (its middle, or a body's corner
 /// between two edges) an edge, and a sketch or construction point a point.
-fn shape(s: &SnapPt) -> RefShape {
+pub(crate) fn shape(s: &SnapPt) -> RefShape {
     match s.kind {
         SnapKind::FaceCenter => RefShape::Plane,
         SnapKind::CircleCenter => RefShape::Round,
@@ -64,7 +64,7 @@ fn shape(s: &SnapPt) -> RefShape {
 }
 
 /// A rule's name in the user's language.
-fn label(c: Constraint) -> &'static str {
+pub(crate) fn label(c: Constraint) -> &'static str {
     solidcraft_ui_text::tr(match c {
         Constraint::Mate => "constrain.rule_mate",
         Constraint::Flush => "constrain.rule_flush",
@@ -111,7 +111,7 @@ fn refs(app: &SolveApp, f: &ConstrainForm, inputs: &[SelInput]) -> Option<Refs> 
 
 /// The part a snap is on: the placement it names (a datum plane's or axis's as well as a face's;
 /// a part inside a copy of a sub-assembly is that copy's), 0 for the root design.
-fn part_of(s: &SnapPt) -> u64 {
+pub(crate) fn part_of(s: &SnapPt) -> u64 {
     s.param.get("occurrence").and_then(Value::as_u64).unwrap_or(0)
 }
 

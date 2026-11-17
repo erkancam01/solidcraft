@@ -311,6 +311,8 @@ pub struct ViewportState {
     pub(crate) joint_handles: Option<crate::joint_handles::Mode>,
     /// A free part being dragged to a new place (#2804).
     pub(crate) occurrence_drag: Option<crate::occurrence_drag::Drag>,
+    /// A part being turned by a right drag on it.
+    pub(crate) occurrence_rotate: Option<crate::occurrence_rotate::Rotate>,
     /// Extrude by pulling a face or profile.
     pub(crate) drag_extrude: crate::drag_extrude::State,
     /// The plane the grid was last drawn on while Preferences ▸ Grid follows the view is on
@@ -5995,6 +5997,11 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         app.preview.rolled_back = preview_should_roll_back(app, held, busy_dragging);
     }
     let proj = projection(app, rect);
+    // A right drag that starts on a part turns it (`occurrence_rotate`); navigation leaves that
+    // drag alone.
+    if !flat {
+        crate::occurrence_rotate::update(app, ui.ctx(), &proj, rect, axes, inside);
+    }
     if let Ok(mut cache) = app.viewport.display.lock() {
         cache.prepare(crate::open_meshing::shown_world(app), &proj, app.viewport.pixels_per_point());
     }
@@ -6848,6 +6855,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     // clear of them all.
     crate::operations::show(app, ui, overlay_rect);
     let readout = quick_measure_readout(app, ui, overlay_rect);
+    crate::quick_mate::show(app, ui, overlay_rect);
     let mut toasts = transient_messages(app, ui, rect, readout);
     toasts.extend(app.operations.rect);
     if app.preferences.space_mouse_in_view

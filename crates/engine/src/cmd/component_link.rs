@@ -685,8 +685,10 @@ fn insert_design(s: &mut Session, p: &Value) -> Result<Value> {
     let read = DesignLink::file_digest(&bytes);
     let name = str_(p, "name").filter(|n| !n.trim().is_empty()).map(str::to_string).unwrap_or(design_name);
     let mut create = json!({"name": name, "activate": false});
-    // Clipboard insertion uses reuse even for the first paste, which must stay movable.
-    if p.get("reuse").and_then(Value::as_bool).unwrap_or(false) {
+    // Clipboard insertion uses reuse even for the first paste, which must stay movable; a design
+    // beside the root's own bodies is not the base either (`file::import::root_has_bodies`).
+    let beside_root_bodies = p.get("parent").is_none() && s.active_component == 0 && super::file::import::root_has_bodies(s);
+    if p.get("reuse").and_then(Value::as_bool).unwrap_or(false) || beside_root_bodies {
         create["grounded"] = json!(false);
     }
     if let Some(parent) = p.get("parent") {

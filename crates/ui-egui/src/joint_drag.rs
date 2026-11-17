@@ -28,8 +28,11 @@ pub struct Drag {
     /// The plane the pointer moves the point in: through where it was grabbed, facing the view.
     origin: Vec3,
     normal: Vec3,
-    /// The drag's undo step is on top of the history (it went in with the first frame that moved).
-    pushed: bool,
+    /// The design the drag's undo step holds, once the first frame that moved made it; it stays
+    /// on top of the history while the drag runs (an undo pressed mid-drag takes it and ends it).
+    step: Option<std::sync::Arc<solidcraft_engine::doc::Document>>,
+    /// Where Escape takes the design back to, as `occurrence_drag` does.
+    checkpoint: Option<u64>,
     /// The pivot it turns about, when it only turns about one (and the preference is on).
     pivot: Option<Pivot>,
     /// Where the pointer was in the plane last frame.
@@ -68,7 +71,7 @@ fn pivot(app: &SolveApp, occurrence: u64, fixed: &[u64]) -> Option<Pivot> {
 }
 
 /// `v` turned by `angle` (radians) about the unit axis `k`.
-fn turned(v: Vec3, k: Vec3, angle: f64) -> Vec3 {
+pub(crate) fn turned(v: Vec3, k: Vec3, angle: f64) -> Vec3 {
     let (sin, cos) = angle.sin_cos();
     v * cos + k.cross(v) * sin + k * (k.dot(v) * (1.0 - cos))
 }
@@ -89,7 +92,8 @@ pub fn start(app: &mut SolveApp, proj: &Proj, p: Pos2) -> bool {
     let Some(local) = mat_inverse(&joints::occurrence_world(&s.doc, occurrence)).map(|inv| apply_point(&inv, at)) else { return false };
     let normal = proj.ray(p).1;
     let pivot = if app.preferences.joint_drag_trackball { pivot(app, occurrence, &sol.fixed) } else { None };
-    app.viewport.joint_drag = Some(Drag { occurrence, local, origin: at, normal, pushed: false, pivot, pointer: at });
+    let checkpoint = app.session.execute("edit.checkpoint", &json!({})).ok().and_then(|r| r["checkpoint"].as_u64());
+    app.viewport.joint_drag = Some(Drag { occurrence, local, origin: at, normal, step: None, checkpoint, pivot, pointer: at });
     true
 }
 
@@ -100,6 +104,13 @@ pub fn active(app: &SolveApp) -> bool {
 /// Reach for the point under `p`.
 pub fn to(app: &mut SolveApp, proj: &Proj, p: Pos2) {
     let Some(d) = app.viewport.joint_drag.clone() else { return };
+    // Something else took the drag's undo step (undo pressed mid-drag): the drag ends there.
+    if let Some(doc) = &d.step
+        && !app.session.undo.last().is_some_and(|step| std::sync::Arc::ptr_eq(&step.doc, doc))
+    {
+        end(app);
+        return;
+    }
     let (o, dir) = proj.ray(p);
     let facing = dir.dot(d.normal);
     if facing.abs() < 1e-9 {
@@ -130,7 +141,7 @@ pub fn to(app: &mut SolveApp, proj: &Proj, p: Pos2) {
     }
     // One undo step for the whole drag: the first frame's, kept on top while the others run (not
     // truncated by depth, which a full history would make lose its oldest steps frame by frame).
-    let own = if d.pushed { app.session.undo.pop() } else { None };
+    let own = if d.step.is_some() { app.session.undo.pop() } else { None };
     // A frame that changes the design adds an undo step (a full history drops its oldest for it,
     // so its length says nothing).
     let before = app.session.doc.clone();
@@ -143,16 +154,32 @@ pub fn to(app: &mut SolveApp, proj: &Proj, p: Pos2) {
             app.session.undo.push(step);
         }
         None if pushed => {
+            let step = app.session.undo.last().map(|step| step.doc.clone());
             if let Some(d) = app.viewport.joint_drag.as_mut() {
-                d.pushed = true;
+                d.step = step;
             }
         }
         None => {}
     }
 }
 
+/// Let go: the part stays where it was dragged.
 pub fn end(app: &mut SolveApp) {
-    app.viewport.joint_drag = None;
+    if let Some(Drag { checkpoint: Some(checkpoint), .. }) = app.viewport.joint_drag.take() {
+        let _ = app.session.execute("edit.restore_checkpoint", &json!({"checkpoint": checkpoint, "forget": true}));
+    }
+}
+
+/// Escape: the part goes back, and the drag leaves no undo step. True when a drag was cancelled.
+pub fn cancel(app: &mut SolveApp) -> bool {
+    let Some(d) = app.viewport.joint_drag.take() else { return false };
+    match d.checkpoint {
+        Some(checkpoint) => drop(app.session.execute("edit.restore_checkpoint", &json!({"checkpoint": checkpoint}))),
+        // Without a checkpoint the drag's own step takes it back.
+        None if d.step.is_some() => drop(app.session.execute("edit.undo", &json!({}))),
+        None => {}
+    }
+    true
 }
 
 #[cfg(test)]

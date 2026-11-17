@@ -957,8 +957,10 @@ fn handle_input(app: &mut SolveApp, ui: &mut egui::Ui, rect: Rect, resp: &egui::
     // The right button also clicks (the context menu), so it navigates only once the press can no
     // longer be a click: a Magic Mouse moves the pointer a fraction of a point as it is clicked (#5517).
     // On that frame the drag catches up with the whole way from the press, so none of it is lost.
+    // A right press on a part that can turn is that part's (`occurrence_rotate`), not the view's.
+    let part_turn = crate::occurrence_rotate::claims_right(app);
     let (right_drag, travel) = ui.input(|i| {
-        let drag = secondary_down && !i.pointer.could_any_button_be_click();
+        let drag = secondary_down && !part_turn && !i.pointer.could_any_button_be_click();
         (drag, i.pointer.press_origin().zip(i.pointer.latest_pos()).map(|(from, to)| to - from))
     });
     let delta = match travel {

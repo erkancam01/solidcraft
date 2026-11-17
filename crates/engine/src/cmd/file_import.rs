@@ -324,11 +324,25 @@ pub(crate) struct Placed {
     pub joints: Vec<u64>,
 }
 
-/// The component an import makes: named `name`, in the active component at its origin.
+/// Whether the design's root already owns bodies. The root never moves, so a part brought in
+/// beside them is not the design's base: it comes in free, as in an assembly only the first part
+/// is fixed.
+pub(crate) fn root_has_bodies(s: &Session) -> bool {
+    s.doc.body_owners(&s.model.state()).contains(&0)
+}
+
+/// The component an import makes: named `name`, in the active component at its origin. It is
+/// grounded only as the base of an otherwise empty design (no other top-level part, no bodies
+/// of the root's own).
 fn new_component(s: &mut Session, name: &str) -> Result<(u64, Option<u64>)> {
     let parent = s.active_component;
+    let free = parent == 0 && root_has_bodies(s);
     let id = s.doc_mut().add_component(Some(name), parent)?;
-    Ok((id, s.doc.occurrence_of(id).map(|o| o.id)))
+    let occurrence = s.doc.occurrence_of(id).map(|o| o.id);
+    if free && let Some(o) = s.doc_mut().occurrences.iter_mut().find(|o| Some(o.id) == occurrence) {
+        o.grounded = false;
+    }
+    Ok((id, occurrence))
 }
 
 /// The name of an imported file's component: `name` if given, else the file's name without its
