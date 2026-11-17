@@ -1,0 +1,100 @@
+{
+  "id": "aksesuar",
+  "name": "Aksesuar",
+  "version": "0.1.2",
+  "description": "Pencere aksesuarı yardımcıları: aksesuarı kanala yerleştirme, tij kesim ve malzeme listesi (CSV), çift açılım kanat şablonu.",
+  "capabilities": ["commands@0.1"],
+  "runtime": {
+    "module": "aksesuar.wasm",
+    "entries": [
+      {
+        "name": "kanala-yerlestir",
+        "effect": "edit",
+        "slots": [{"kind": "menu", "name": "Kanala Yerleştir"}, {"kind": "ribbon", "name": "Kanala Yerleştir"}],
+        "input_schema": {
+          "type": "object",
+          "required": ["mesafe"],
+          "properties": {
+            "mesafe": {
+              "type": "string",
+              "title": "Mesafe",
+              "description": "Önce aksesuarın oturma yüzünü, sonra Ctrl ile kanat profilinin düz kenarını seçin. Mesafe kenarın başından ölçülür: sayı (mm) ya da ifade, ör. 250, KOL, FFH/2.",
+              "default": "0",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "sondan": {
+              "type": "boolean",
+              "title": "Kenarın sonundan ölç",
+              "description": "Mesafeyi kenarın öbür ucundan ölçer.",
+              "default": false
+            },
+            "cevir": {
+              "type": "boolean",
+              "title": "180° çevir",
+              "description": "Parçayı oturma yüzü üzerinde ters çevirir.",
+              "default": false
+            }
+          }
+        }
+      },
+      {
+        "name": "tij-listesi",
+        "effect": "read",
+        "slots": [{"kind": "menu", "name": "Tij ve Malzeme Listesi"}, {"kind": "ribbon", "name": "Tij ve Malzeme Listesi"}],
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "dosya": {
+              "type": "string",
+              "title": "Dosya adı",
+              "description": "İzin verdiğiniz 'cikti' klasörüne yazılır (Excel için ; ayraçlı CSV).",
+              "default": "tij_listesi.csv",
+              "maxLength": 100
+            }
+          }
+        }
+      },
+      {
+        "name": "cift-acilim-sablonu",
+        "effect": "edit",
+        "slots": [{"kind": "menu", "name": "Çift Açılım Şablonu"}, {"kind": "ribbon", "name": "Çift Açılım Şablonu"}],
+        "input_schema": {
+          "type": "object",
+          "required": ["FFH", "FFB", "KOL"],
+          "properties": {
+            "FFH": {"type": "number", "title": "FFH (kanat yüksekliği)", "description": "Kanat dış yüksekliği.", "default": 1200, "minimum": 600, "maximum": 3000, "unit": "mm"},
+            "FFB": {"type": "number", "title": "FFB (kanat genişliği)", "description": "Kanat dış genişliği; makas boyu buna göre seçilir.", "default": 900, "minimum": 400, "maximum": 2000, "unit": "mm"},
+            "KOL": {"type": "number", "title": "KOL (kol yüksekliği)", "description": "Kolun kanat altından yüksekliği.", "default": 600, "minimum": 273, "maximum": 2727, "unit": "mm"},
+            "cocuk_kilidi": {"type": "boolean", "title": "Çocuk kilidi", "description": "CK parametresi: işaretliyse 1 (çocuk kilidi var).", "default": false}
+          }
+        }
+      },
+      {
+        "name": "ozellikler",
+        "effect": "read",
+        "slots": [{"kind": "menu", "name": "Aksesuar Özellikleri"}, {"kind": "ribbon", "name": "Aksesuar Özellikleri"}],
+        "input_schema": {"type": "object", "properties": {}}
+      }
+    ],
+    "commands": [
+      "appearance.assign",
+      "component.from_bodies",
+      "component.list",
+      "config.activate",
+      "config.configure",
+      "config.rule",
+      "document.inspect",
+      "joint.create",
+      "model.edges",
+      "model.faces",
+      "occurrence.ground",
+      "parameters.add",
+      "parameters.list",
+      "selection.get",
+      "solid.box"
+    ],
+    "limits": {"fuel": 5000000000, "memory_mib": 64, "deadline_ms": 30000},
+    "permissions": {"files": [{"name": "cikti", "write": true}]}
+  }
+}

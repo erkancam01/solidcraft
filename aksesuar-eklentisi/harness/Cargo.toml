@@ -1,0 +1,16 @@
+# Runs the built Aksesuar component in SolidCraft's own plugin runtime (craft-plugin-wasm), with
+# a scripted host in place of the CAD engine. Its own workspace: it builds Wasmtime, so it runs in
+# CI, not in the plugin's quick `cargo test`.
+[workspace]
+
+[package]
+name = "aksesuar-harness"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+craft-plugin = { path = "../../crates/craft-plugin" }
+craft-plugin-wasm = { path = "../../crates/craft-plugin-wasm" }
+serde_json = "1"

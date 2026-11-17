@@ -1,0 +1,82 @@
+# Erkan'ın forku: Aksesuar eklentisi (SolidCraft wasm bileşeni).
+# "aksesuar-eklentisi" dalına her push'ta ya da Actions > Aksesuar eklentisi > Run workflow ile çalışır.
+# Çıktı: "aksesuar-eklentisi" adlı artifact; içindeki aksesuar-eklentisi.zip, SolidCraft'ta
+# Tercihler > Eklentiler > Eklenti yükle… ile kurulur.
+name: Aksesuar eklentisi
+
+on:
+  push:
+    branches: [aksesuar-eklentisi]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  eklenti:
+    name: Aksesuar eklentisi (wasm bileşeni)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: aksesuar-eklentisi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: aksesuar-eklentisi
+          workspaces: |
+            aksesuar-eklentisi -> target
+            aksesuar-eklentisi/harness -> target
+      - name: Birim testleri (eklenti mantığı, yerel)
+        run: cargo test --locked
+      - name: Biçim ve clippy (wasm hedefi)
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --release --target wasm32-unknown-unknown -- -D warnings
+      - name: Wasm bileşenini derle
+        run: |
+          cargo build --locked --release --target wasm32-unknown-unknown
+          mkdir -p dist/aksesuar
+          wasm-tools component new target/wasm32-unknown-unknown/release/aksesuar.wasm -o dist/aksesuar/aksesuar.wasm
+          wasm-tools validate dist/aksesuar/aksesuar.wasm
+          echo "--- bileşenin WIT arayüzü ---"
+          wasm-tools component wit dist/aksesuar/aksesuar.wasm
+          cp plugin.json dist/aksesuar/plugin.json
+          ls -l dist/aksesuar
+      - name: Bileşeni SolidCraft eklenti çalışma ortamında dene
+        working-directory: aksesuar-eklentisi/harness
+        run: cargo run --locked --release -- ../dist/aksesuar
+      - name: Eklenti zip'ini hazırla
+        run: |
+          mkdir -p dist/artifact
+          (cd dist/aksesuar && zip -X -r ../artifact/aksesuar-eklentisi.zip plugin.json aksesuar.wasm)
+          cp ../AKSESUAR-OZELLIKLERI.md dist/artifact/
+          python3 - <<'EOF'
+          import json, zipfile
+          z = zipfile.ZipFile("dist/artifact/aksesuar-eklentisi.zip")
+          names = sorted(z.namelist())
+          assert names == ["aksesuar.wasm", "plugin.json"], names
+          assert json.loads(z.read("plugin.json"))["id"] == "aksesuar"
+          print("zip:", names)
+          EOF
+          sha256sum dist/artifact/aksesuar-eklentisi.zip dist/aksesuar/aksesuar.wasm | tee dist/artifact/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aksesuar-eklentisi
+          path: aksesuar-eklentisi/dist/artifact/
+          retention-days: 30
+          if-no-files-found: error
