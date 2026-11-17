@@ -76,8 +76,8 @@ and the preview follows each step. An expression such as `width / 2` is left as 
 
 Expressions are unit-aware: `2 * width + 5 mm`, `angle / 2`, `sqrt(area)`, `1 in + 3 mm`, using
 `+ - * / ^ %`, parentheses, `sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh sqrt
-abs sign min max floor ceil round trunc mod exp ln log log10 pow hypot` (`log` is base 10) and unit
-conversion. A number and the unit after it are one value: `10 mm / 2 mm` is 5
+abs sign min max floor ceil round trunc mod exp ln log log10 pow hypot if and or not` (`log` is
+base 10), comparisons (`< <= > >= == !=`, see below) and unit conversion. A number and the unit after it are one value: `10 mm / 2 mm` is 5
 and `90 deg / 1 rad` is π/2, and a fraction of numbers before a unit is one value too (`1/2 in`
 is half an inch; after a `/` only written without spaces: `1 in / 1/2 in` is 2, while
 `width / 10 / 2 mm` divides by 10 and then by 2 mm). A decimal comma works too: `2,5 mm` is
@@ -88,6 +88,30 @@ numbers). A length where an angle is expected (or the other way round) is an
 error, not a silent conversion. Cycles are reported with their path (`a → b → a`), renaming a
 parameter updates every expression, dimension and feature input that uses it, and a parameter
 in use can't be deleted (the error lists its users).
+
+**Conditions.** A comparison gives 1 when it holds and 0 when it does not: `FFH > 1200 mm` is 1 for a 1500 mm
+`FFH`. The operators are `<`, `<=`, `>`, `>=`, `==` and `!=` (`≤`, `≥` and `≠` work too). They bind
+looser than everything else, so `1 + 2 > 2` is `(1 + 2) > 2`, which is 1. Both sides must be of one
+kind (two lengths, two angles or two plain numbers); a bare number beside a length is read in the
+default unit as it is for `+`, so `FFH > 1200` compares with 1200 mm. Values are compared in
+millimetres or radians, and two values closer than a billionth (relative) are equal, so
+`12 in == 1 ft` and `0.1 + 0.2 == 0.3` are 1. Comparisons do not chain: write
+`and(a < b, b < c)` for `a < b < c`.
+
+A condition is true when it is not 0. `if(condition, a, b)` is `a` when the condition is true and
+`b` otherwise; `a` and `b` must be of one kind, and a bare number takes the other's unit, as in
+`min` and `max`. `and(a, b, …)` is 1 when all of its conditions are true, `or(a, b, …)` when any of
+them is, and `not(a)` when `a` is not. For example:
+
+- `if(FFH > 1200 mm, 2, 1)`: two hinges on a tall sash, one otherwise
+- `if(width >= 800 mm, width / 2, width)`: half the width from 800 mm up
+- `if(FFH > 2000 mm, 3, if(FFH > 1200 mm, 2, 1))`: three steps, nested
+- `if(and(FFH > 1200 mm, not(fixed)), 2, 1)`: two only for a tall sash that opens
+
+The branch `if` does not take, and the conditions after the one that decides `and` or `or`, must
+read correctly but are not evaluated for errors: `if(n > 0, L / n, 0)` is 0 when `n` is 0. Their
+kinds are still checked when they can be evaluated. `if`, `and`, `or` and `not` are function names,
+so they cannot be parameter names.
 
 The design's units (Document Settings in the browser: mm, cm, m, in or ft) set how a bare number
 or unitless arithmetic expression typed into a length field is read. In an inch design `0.25`

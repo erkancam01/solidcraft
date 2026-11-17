@@ -1347,7 +1347,8 @@ fn a_definition_that_cannot_be_made_is_refused_and_leaves_nothing() {
         ("w =", Value::Null, "`w =` needs a value after the `=`"),
         ("w = ", Value::Null, "needs a value"),
         ("2 = 3", Value::Null, "unexpected `=`"),
-        ("w == 3", Value::Null, "unexpected `=`"),
+        // `==` compares: `w == 3` is no definition, and `w` is not a parameter.
+        ("w == 3", Value::Null, "`w`"),
         ("w = nope", Value::Null, "nope"),
         ("w = 1 deg", Value::Null, ""),
         ("w = w", Value::Null, ""),
