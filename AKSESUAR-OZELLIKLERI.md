@@ -8,9 +8,14 @@ nerede olduğu, nasıl kullanıldığı ve nereden indirileceği.
 | 1 | Türkçe arayüz (SolidWorks terimleriyle) | Çeviri | `turkce` | Hazır |
 | 2 | İfadelerde `if()`, karşılaştırmalar, `and`/`or`/`not` (A1) | Motor | `a1-ifade` | Hazır |
 | 3 | Çoğaltma adetlerinin parametreyle sürülmesi (A3) | Motor | `a3-cogaltma` | Geliştiriliyor |
-| 4 | Aksesuar eklentisi (4 komut) | Eklenti | `aksesuar-eklentisi` | 0.1.2; dört komut da uygulamada denendi |
+| 4 | Aksesuar eklentisi (6 komut) | Eklenti | `aksesuar-yerlesim` (0.1.2'ye kadar `aksesuar-eklentisi`) | 0.1.4; altı komut da uygulamada denendi |
 | 5 | Koşullu bastırma: konfigürasyon kuralları | SolidCraft'ta yerleşik | — | Hazır |
 | 6 | Kolay montaj (SolidWorks gibi) | Motor + arayüz | `montaj-kolay` | Uygulamada denendi |
+| 7 | Aksesuar Kütüphanesi + yerleşim noktaları + tıkla-yerleştir | Motor + arayüz | `aksesuar-yerlesim` | Hazır — uygulamada denendi |
+
+**`aksesuar-yerlesim` dalı hepsini içerir:** `turkce`, `a1-ifade`, `aksesuar-eklentisi` ve
+`montaj-kolay` bu dala birleştirildi (merge). Yalnızca `a3-cogaltma` ayrı duruyor. Derlemek ve
+denemek için bu dalı kullanın.
 
 Eski A2 (bastırma) ve A4 (kanal) dalları bırakıldı; işleri eklentiye ve yerleşik kurallara taşındı.
 
@@ -39,8 +44,10 @@ Global değişken ifadelerinde artık:
 MK = if(FFB <= 650, 220 mm, if(FFB <= 1000, 420 mm, 650 mm))
 ```
 
-Bu bir motor değişikliğidir: kullanmak için `a1-ifade` dalından derlenmiş SolidCraft gerekir.
-Aksesuar eklentisi buna ihtiyaç duymaz (şablon `min`/`max`/`ceil` kullanır).
+Bu bir motor değişikliğidir: kullanmak için `a1-ifade` (ya da hepsini içeren `aksesuar-yerlesim`)
+dalından derlenmiş SolidCraft gerekir. Aksesuar eklentisi buna ihtiyaç duymaz (şablon
+`min`/`max`/`ceil` kullanır). Yerleşim noktalarının koşulları (`FFH > 1200 mm`, 7.3) bu
+karşılaştırmalarla yazılır.
 
 ## 3. Çoğaltma adetleri (A3, `a3-cogaltma`)
 
@@ -49,8 +56,12 @@ karşılıklarının sayısını FFH'ye bağlamak. **Henüz geliştiriliyor**, h
 
 ## 4. Aksesuar eklentisi (`aksesuar-eklentisi`)
 
-Kaynak: `aksesuar-eklentisi/` (bağımsız Rust projesi, WebAssembly bileşeni). Kurulduktan sonra
-komutlar iki yerde görünür:
+Kaynak: `aksesuar-eklentisi/` (bağımsız Rust projesi, WebAssembly bileşeni). Sürüm **0.1.4**,
+6 komut. En yeni hâli `aksesuar-yerlesim` dalında; `aksesuar-eklentisi` dalı 0.1.2'de kaldı.
+0.1.3 ve sonrası SolidCraft'ın yeni yerleşim noktası komutlarını (`hardware.slot.*`) kullanır:
+`aksesuar-yerlesim` dalından derlenmiş SolidCraft ile kullanın.
+
+Kurulduktan sonra komutlar iki yerde görünür:
 
 - Üst çubuktaki **Eklentiler** menüsü > **Aksesuar** alt menüsü,
 - **Model** sekmesindeki **Eklentiler** grubu (her komut kendi adıyla bir düğme).
@@ -90,6 +101,9 @@ oturma yüzüdür ve pay **30,9 mm**'dir (**Kenarın sonundan ölç** + **180° 
 
 Parçanın yönü oturma yüzünün **kendi düzlemindeki** en uzun düz kenardan alınır (0.1.1'de
 gövdenin başka yüzlerindeki kenarlar da sayılıyordu; karmaşık parçalarda eğik oturabiliyordu).
+
+Kütüphanedeki parçalar için daha kolay yol: **tıkla-yerleştir** (7.4). Kanala Yerleştir, kütüphanede
+olmayan ya da yerleşim noktası olmayan parçalar için kalır.
 
 ### 4.2 Tij ve Malzeme Listesi
 
@@ -137,11 +151,24 @@ Konfigürasyon kuralları (aşağıdaki 5. bölüm):
 | Çocuk kilidi: CK = 0 ise yok | CK = 0 | COCUK KILIDI bastırılır |
 | Çocuk kilidi: CK = 1 ise var | CK ≠ 0 | COCUK KILIDI geri gelir |
 
-Sonra **Global Değişkenler** panelinde FFH, FFB, KOL ya da CK'yi değiştirmeniz yeter: ölçüler
-güncellenir, kilitler kendiliğinden gelir/gider. Tasarımda bu adlarda bir global değişken varsa
-şablon hiçbir şey yapmadan durur ve nedenini söyler.
+Sonra **Global Değişkenler** panelinde FFH, FFB, KOL ya da CK'yi değiştirmeniz yeter (ya da
+**Ölçüleri Değiştir**, 4.5): ölçüler güncellenir, kilitler kendiliğinden gelir/gider. Tasarımda bu
+adlarda bir global değişken varsa şablon hiçbir şey yapmadan durur ve nedenini söyler.
 
-### 4.4 Aksesuar Özellikleri
+**Yerleşim noktaları** (0.1.3): şablon son adımda kanada 9 yerleşim noktası yazar (4 köşe, alt ve
+üst menteşe, makas, kol, FFH > 1200'de ek kilit). Noktalar Aksesuar Kütüphanesi panelinde görünür
+ve ölçülerle birlikte kayar; ayrıntı 7.3'te.
+
+### 4.4 Koşullu Parçaları Güncelle (0.1.4)
+
+Koşullu yerleşim noktalarına (ör. Ek kilit 1: FFH > 1200 mm) yerleştirilmiş parçaları o koşula
+bağlar. Ayrıntı 7.5'te.
+
+### 4.5 Ölçüleri Değiştir (0.1.4)
+
+FFH, FFB, KOL ve çocuk kilidini tek pencerede, tek adımda değiştirir. Ayrıntı 7.6'da.
+
+### 4.6 Aksesuar Özellikleri
 
 Bu komutların Türkçe yardım metnini pencerede gösterir.
 
@@ -220,11 +247,202 @@ dış yüzü ile parçanın oturma yüzü seçilince kart açıldı (Çakışık
 Çakışık'a tıklayınca dört gövde birlikte x = 900'deki yüze oturdu; Ters çevir parçayı döndürdü ve
 her tıklamada değişti.
 
-## 7. Eklentiyi kurmak
+## 7. Aksesuar Kütüphanesi ve yerleşim (`aksesuar-yerlesim`)
 
-1. Eklenti zip'ini indirin (9. bölüm) ya da bilgisayarda derleyin (8. bölüm) ve indirilen `aksesuar-eklentisi.zip` artifact'ını açın:
-   içindeki **`aksesuar-eklentisi.zip`** kurulacak dosyadır (içinde `plugin.json` ve
-   `aksesuar.wasm` var).
+Aksesuarı kütüphaneden seçip kanattaki hazır bir noktaya tek tıkla oturtmak için yapılan program
+(motor + arayüz) değişiklikleri. Eklentiyle yapılamadı: noktaları görünümde çizmek, önizleme ve
+görünümde tıklama eklentiye açık değil.
+
+İş sırası:
+
+1. Kütüphane klasörü ve panel (7.1).
+2. Her parça için bir kez **bağlantı noktası** (7.2): parçanın neresiyle oturacağı.
+3. Kanatta **yerleşim noktaları** (7.3): parçanın nereye geleceği. Çift Açılım Şablonu yazar.
+4. **Tıkla-yerleştir** (7.4).
+5. Koşullu noktalardaki parçalar için **Koşullu Parçaları Güncelle** (7.5).
+
+### 7.1 Kütüphane klasörü ve panel
+
+Klasör: `C:\Users\PC\Desktop\aksesuar\kutuphane\<Grup>\`. Her alt klasör bir gruptur:
+
+| Grup klasörü | Şablondaki yerleşim noktaları (7.3) |
+|---|---|
+| Köşe aktarma | Sol alt, Sol üst, Sağ üst, Sağ alt köşe |
+| Menteşe grubu | Alt menteşe, Üst menteşe |
+| Makas ve kol | Makas, Kol |
+| Kilit ispanyolet tij | Ek kilit 1 |
+| Profil | — (kanat profilleri; kanat oluşturma sonraki aşamada) |
+
+- Listelenen dosyalar: `.step`, `.stp` ve `.dxf` (büyük/küçük harf fark etmez). **Profil**
+  grubunda ayrıca SolidCraft tasarımları (`.sc` ve kart olmayan `.json`).
+- **Parça kartı**: dosyanın yanında aynı adlı `<ad>.json`. Alanları: `part_no` (parça no),
+  `description` (açıklama), `role` (`hardware` aksesuar / `profile` profil), `connection`
+  (bağlantı noktası, 7.2). Kart yoksa parça yine listelenir. `role` yoksa Profil klasöründekiler
+  profil, diğerleri aksesuar sayılır.
+- En çok 64 grup ve 2000 parça listelenir.
+
+Panel: **Montaj > Bileşenler > Aksesuarlar** sağda **Aksesuar Kütüphanesi** panelini açar.
+
+- **Klasör** alanı, **Klasör seç…** ve **Yenile**. Klasör seç'te kütüphane klasöründeki ya da bir
+  grup klasöründeki herhangi bir STEP, DXF veya tasarım dosyasını seçin. Klasör tercih olarak
+  saklanır; bir kez seçmek yeter.
+- **Ara**: ada, parça numarasına ve açıklamaya göre süzer.
+- Her satırda küçük resim, ad, parça no ve **Bağlantı noktası tanımlı** / **Bağlantı noktası yok**.
+- **Tasarıma ekle** (ya da çift tık): STEP parçasını yerleşim noktası kullanmadan tasarıma ekler.
+  Profil ve DXF için kanat oluşturma sonraki aşamada.
+- Bağlantı noktası tanımlı bir aksesuara tıklamak yerleştirme modunu açar (7.4).
+
+### 7.2 Bağlantı noktası
+
+Parçanın kanala hangi yüzüyle ve hangi köşesinden oturacağı. Her parça için bir kez tanımlanır,
+parça kartına yazılır.
+
+1. Kütüphanede parçayı seçin, **Bağlantı noktası…**'na tıklayın (tanımlıysa **Bağlantı noktasını
+   değiştir…**). Parça tasarıma bir anlığına gelir; görünümde küçük bir kart açılır.
+2. **Oturma yüzü**: parçanın kanala oturan düz yüzüne tıklayın.
+3. **Referans kenar**: bu yüzde, ölçünün alındığı köşeden başlayan düz kenara tıklayın. Tıkladığınız
+   yere yakın uç başlangıç olur. **Kenarın ortasından** işaretliyse kenarın ortası alınır.
+4. **Yanalda yüzün ortası** (varsayılan açık): başlangıç, oturma yüzünün genişliğinde ortaya
+   kayar. Böylece parça kanalın ortasına oturur.
+5. **Kaydet**: bağlantı noktası parçanın kendi (STEP) koordinatında karta yazılır. Parça
+   tasarımdan kalkar; **tasarım değişmez**, geri alma adımı kalmaz. İptal, Esc ve kartı kapatmak
+   da tasarımı eski hâline döndürür.
+
+**İpucu:** kenarın, parçanın referans köşesine yakın ucuna tıklayın (köşe aktarmada kanat
+köşesine gelen uç).
+
+**Dikkat:** köşe aktarmanın şimdiki kartı (`Köşe aktarma\YMB.00146 - TIRNAKLI KÖŞE AKTARMA.json`)
+denemede seçilmiş **deneme verisidir**. Gerçek kullanımdan önce bağlantı noktasını yeniden
+tanımlayın.
+
+### 7.3 Yerleşim noktaları
+
+Yerleşim noktası: kanatta bir kütüphane grubunun parçasının geleceği adlandırılmış yer. Tasarımda
+saklanır (tasarımla kaydedilir) ve FFH, FFB, KOL değişince kendiliğinden kayar: kenar ve yüz adla
+yeniden bulunur.
+
+| Alan | Anlamı |
+|---|---|
+| **Ad** | ör. Sol alt köşe |
+| **Grup** | hangi kütüphane grubunun parçası gelir (ör. Köşe aktarma) |
+| **Taban yüzü** + **Kenar** | profilin aksesuar yüzü ve bu yüzün düz kenarı; kenarda tıklanan yere yakın uç köşedir |
+| **Kenar boyunca** | köşeden mesafe: sayı ya da ifade (`0`, `KOL`, `(KA + KOL - IS/2)/2`) |
+| **Yanal** | **Ortala** (yüzün ortası) ya da mesafe / ifade |
+| **Açı** | taban yüzü üzerinde dönüş |
+| **Ters** | parçayı ters çevirir |
+| **Koşul** | boşsa nokta hep kullanılır; ör. `FFH > 1200 mm`. Koşul tutmuyorsa: **Etkin değil (koşul)** |
+
+Panel: Aksesuar Kütüphanesi'nin altında **Yerleşim noktaları** bölümü. Noktalar gruplara göre
+listelenir.
+
+- **Nokta ekle…**: taban yüzüne ve kenara tıklayın, kartta alanları doldurun. Noktanın yeri
+  görünümde eksen üçlüsüyle gösterilir. **Kaydet** tek geri alma adımıdır; İptal ve Esc hiçbir şey
+  değiştirmez.
+- **Noktayı düzenle**: aynı kart. Yüz ve kenarı yeniden seçmezseniz noktanın yeri değişmez.
+- **Noktayı sil**.
+- Kütüphane açıkken her nokta 3B görünümde bir işaretle çizilir (koşulu tutmuyorsa soluk); üstüne
+  gelince adı görünür.
+
+Çift Açılım Şablonu (eklenti 0.1.3 ve sonrası) şu 9 noktayı yazar (önden bakış: kol tarafı solda
+x = 0, menteşe tarafı sağda x = FFB, oda tarafı y = 0):
+
+| Nokta | Grup | Yer | Kenar boyunca | Koşul |
+|---|---|---|---|---|
+| Sol alt köşe | Köşe aktarma | sol profilin dış yüzü, alt köşe | `0` | — |
+| Sol üst köşe | Köşe aktarma | sol profilin dış yüzü, üst köşe | `0` | — |
+| Sağ üst köşe | Köşe aktarma | sağ profilin dış yüzü, üst köşe | `0` | — |
+| Sağ alt köşe | Köşe aktarma | sağ profilin dış yüzü, alt köşe | `0` | — |
+| Alt menteşe | Menteşe grubu | sağ profilin alt alın yüzü, sağ alt köşe | `0` | — |
+| Üst menteşe | Menteşe grubu | sağ profilin üst alın yüzü, sağ üst köşe | `0` | — |
+| Makas | Makas ve kol | üst profilin dış yüzü, menteşe tarafından | `0` | — |
+| Kol | Makas ve kol | sol profilin **oda tarafındaki** yüzü (rozetin olduğu yüz), profilin ortası | `KOL` | — |
+| Ek kilit 1 | Kilit ispanyolet tij | sol profilin dış yüzü, şablonun ek kilidi ortaladığı yer | `(KA + KOL - IS/2)/2` | `FFH > 1200 mm` |
+
+Kol noktasının yeri kararlaştırıldı: oda tarafındaki yüzde, KOL yüksekliğinde.
+
+### 7.4 Tıkla-yerleştir
+
+1. Aksesuar Kütüphanesi'nde bağlantı noktası tanımlı bir aksesuara tıklayın. Üstte
+   "Yerleştirme: <parça> — uygun noktaya tıklayın (Esc: bitir)" yazar. Bağlantı noktası yoksa
+   "Önce bağlantı noktasını tanımlayın" der.
+2. Parçanın grubuna uyan, etkin ve boş noktalar görünümde parlar.
+3. Fareyle bir noktanın üstüne gelin: parça orada **yarı saydam önizleme** olarak görünür.
+4. Tıklayın: parça yerleşir. Tek Ctrl+Z ile geri alınır. Dolu nokta küçük gri, onaylı bir işaret
+   olur.
+5. Mod açık kalır: aynı parçayı başka noktalara da koyun (ör. dört köşe aktarma). Aynı dosya
+   ikinci kez **kopyası** olarak gelir: tek bileşen, dosya bir kez okunur.
+6. Yerleştirmeden sonra parçanın yanında küçük bir kart: **Ters çevir** (yüzün öbür yönü),
+   **180° çevir** (taban yüzü üzerinde yarım tur), **Kaldır** (yerleşimi geri alır).
+7. Bitirmek: **Esc**, görünümde sağ tık ya da aynı parça satırına yeniden tıklama.
+
+Sonuç: her parça için bir **Düzlemsel ilişki** (`<nokta adı>: <parça adı>`). Parça adı kartın
+`part_no`'su, yoksa dosya adı. Kenar boyunca ifadesi ilişkide saklanır: FFH, FFB, KOL değişince
+parçalar yeni yerlerine kendiliğinden kayar.
+
+### 7.5 Koşullu parçalar: Koşullu Parçaları Güncelle (eklenti 0.1.4)
+
+Tıkla-yerleştir parçayı koyar ama noktanın koşuluna bağlamaz. Koşullu noktalara (ör. Ek kilit 1)
+parça yerleştirdikten sonra **Koşullu Parçaları Güncelle**'yi çalıştırın (girdisi yok).
+
+- Her koşullu noktadaki parçanın içe aktarma (Import) özelliğini Tasarım Tablosu'na sütun olarak
+  ekler ve iki konfigürasyon kuralı kurar (`kosul-<nokta>-on` / `kosul-<nokta>-off`, 5. bölüm).
+- Sonra FFH değişince parça **canlı** gelir/gider: koşul tutunca görünür, tutmayınca bastırılır.
+  Eklentiyi yeniden çalıştırmak gerekmez. Parçanın ilişkisi bastırılmışken de bozulmaz.
+- Tek karşılaştırma (`FFH > 1200 mm`) doğrudan kuralın koşulu olur. Birleşik koşul
+  (`and(FFH > 1400 mm, FFB > 800 mm)`) `KOSUL_<NOKTA>` adlı birimsiz bir parametreye yazılır.
+- Aynı STEP'i paylaşan yerleşimler: koşullu olan parça aynı yerde **bağımsız** bir kopyaya ayrılır,
+  ilişkisi yeniden kurulur. Yoksa bastırma öbür kopyaları da götürürdü.
+- Tekrar çalıştırmak güvenlidir: kurallar yinelenmez, yeni parçalar eklenir. Koşulu kaldırılan
+  noktanın kuralları silinir, parçası geri gelir.
+- Şablonun kendi kutuları (EK KILIT 1, COCUK KILIDI, sol alt tijler) kendi kurallarıyla kalır.
+- Tek geri alma adımı.
+
+### 7.6 Ölçüleri Değiştir (eklenti 0.1.4)
+
+Form: **FFH**, **FFB**, **KOL** (mm) ve **Çocuk kilidi** (**Değiştirme** / **Evet** / **Hayır**).
+
+- Boş bırakılan alan değişmez.
+- Ölçüler şablonun sınırlarıyla denetlenir (tijler yeterince uzun kalmalı).
+- Tek bir parametre düzenlemesidir: kurallar hemen çalışır, kilitler ve koşullu parçalar gelip
+  gider. **Tek geri alma adımı.**
+- Özet eski → yeni değerleri ve kullanımı değişen koşullu noktaları gösterir.
+- Tasarımda FFH, FFB ve KOL yoksa önce Çift Açılım Şablonu'nu çalıştırın.
+
+### 7.7 Komutlar (ajan ya da CLI)
+
+| Komut | Ne yapar |
+|---|---|
+| `hardware.library.list {folder}` | Kütüphaneyi gruplar, parçalar ve kartlarla listeler |
+| `hardware.card.set {path, part_no?, description?, role?, connection?}` | Parça kartını yazar |
+| `hardware.slot.add` / `edit` / `delete` / `list` | Yerleşim noktaları; `list` noktanın dünyadaki yerini ve etkin olup olmadığını verir |
+| `hardware.place {slot, path, preview?}` | Parçayı noktaya oturtur; `preview` tasarımı değiştirmeden yerini verir |
+| `hardware.unplace {slot}` | Noktadaki parçayı kaldırır |
+
+### 7.8 Deneme sonuçları (17.11.2026)
+
+| Deneme | Sonuç |
+|---|---|
+| Kütüphane paneli | 7/7 |
+| Bağlantı noktası belirleme | tüm adımlar geçti |
+| Yerleşim noktaları | 7/7: noktalar doğru yerde; FFH, FFB ve KOL değişince izliyor |
+| Tıkla-yerleştir | 8/8: dört köşeye köşe aktarma; tek bileşen, 4 kopya; FFH 1100 / FFB 1000 yapılınca izliyor |
+| Eklenti 0.1.4 | Koşullu Parçaları Güncelle ve Ölçüleri Değiştir; ilişki hatası yok; her çalıştırma tek geri alma adımı |
+
+Eklenti 0.1.4 ile FFH değiştirilince görünen kilitler:
+
+| FFH | Ek kilit (EK KILIT 1 ve Ek kilit 1 noktasındaki parça) | Sol alt tij |
+|---|---|---|
+| 1300 | görünür | iki parça (TIJ sol alt 1 ve 2) |
+| 1100 | bastırılmış | tek parça (TIJ sol alt) |
+| 1500 | görünür | iki parça (TIJ sol alt 1 ve 2) |
+
+Testler: motor hardware testleri **21/21**, eklenti testleri **56/56**.
+
+## 8. Eklentiyi kurmak
+
+1. Eklenti zip'ini indirin (10. bölüm) ya da bilgisayarda derleyin (9. bölüm). İndirilen
+   `aksesuar-eklentisi.zip` artifact'ını açın: içindeki **`aksesuar-eklentisi.zip`** kurulacak
+   dosyadır (içinde `plugin.json` ve `aksesuar.wasm` var).
 2. SolidCraft'ta **Tercihler > Eklentiler > Eklenti yükle…** (ya da **Eklentiler** menüsü >
    **Eklenti yükle…**) ve bu zip'i seçin.
 3. Onay ekranında **cikti** klasörü için tam bir klasör yolu girin (ör.
@@ -233,15 +451,20 @@ her tıklamada değişti.
 
 Güncellerken aynı yolla yeni zip'i yükleyin (eskisinin yerine geçer; klasör iznini yeniden verin).
 Kaldırmak: Tercihler > Eklentiler > Aksesuar > **Kaldır**. Eklenti yalnızca masaüstü sürümde
-çalışır (web sürümünde çalışmaz).
+çalışır (web sürümünde çalışmaz). 0.1.3 ve sonrası için SolidCraft'ın `aksesuar-yerlesim`
+dalından derlenmiş olması gerekir (4. bölüm).
 
-## 8. Bilgisayarda derleme ve deneme
+## 9. Bilgisayarda derleme ve deneme
 
 Kaynak `C:\Users\PC\Desktop\aksesuar\solidcraft` klasöründe (forkun klonu). Gereken araçlar
 kurulu: Git, Rust 1.99.1 (`wasm32-unknown-unknown` hedefiyle), Visual Studio 18 (MSVC),
 `wasm-tools`, Node.
 
-Eklentiyi derlemek (`aksesuar-eklentisi` dalında, `aksesuar-eklentisi/` klasöründe):
+**Kural: önce eklenti.** Bir iş eklentiyle yapılabiliyorsa önce eklentide yapılır: eklenti
+~1 dakikada derlenir. Uygulama (motor + arayüz) değişiklikleri biriktirilir ve tek derlemede
+denenir.
+
+Eklentiyi derlemek (`aksesuar-yerlesim` dalında, `aksesuar-eklentisi/` klasöründe):
 
 ```text
 cargo test --locked
@@ -251,6 +474,16 @@ copy plugin.json dist\aksesuar\
 ```
 
 `dist\aksesuar` içindeki `plugin.json` ve `aksesuar.wasm` zip'lenip kurulur.
+
+Uygulamayı deneme için derlemek (kök klasörde, `hizli` profili):
+
+```text
+cargo build --locked -p solidcraft --profile hizli --target x86_64-pc-windows-msvc
+```
+
+- Çıktı: `target\x86_64-pc-windows-msvc\hizli\solidcraft.exe`.
+- İlk derleme ~30 dakika sürer; sonrakiler artımlıdır (yalnızca değişen kısım derlenir).
+- `hizli` hafif optimize eder, LTO yapmaz. Teslim zip'leri yine `--release` ile derlenir.
 
 Uygulamasız deneme: `solidcraft-cli.exe` eklentiyi doğrudan çalıştırabilir (`plugin.inspect` ile
 onay özeti alınır, `plugin.run` ile çalışır, `snapshot` ile görüntü alınır). Dosya yazan komut
@@ -281,7 +514,9 @@ yüzü dikey kolun iç yüzü, kenar Kanat sağ'ın dış dikey kenarı, sondan 
 - Şablonun kendi KA-02 kutuları aynı yerde durur; gerçek parça kullanırken onları silin ya da
   gizleyin.
 
-## 9. İndirme yerleri
+0.1.3 ve 0.1.4 deneme sonuçları: 7.8.
+
+## 10. İndirme yerleri
 
 GitHub: `erkancam01/solidcraft` > **Actions**.
 
@@ -293,7 +528,10 @@ GitHub: `erkancam01/solidcraft` > **Actions**.
 Çalışmanın sayfasının en altında **Artifacts** bölümünden indirilir (GitHub'a giriş gerekir;
 30 gün saklanır).
 
-## 10. Bilinen sınırlar
+Eklenti 0.1.4 ve Aksesuar Kütüphanesi yalnızca `aksesuar-yerlesim` dalında. **Run workflow**
+derken dal olarak `aksesuar-yerlesim`'i seçin; `aksesuar-eklentisi` dalı 0.1.2 verir.
+
+## 11. Bilinen sınırlar
 
 - Kanala Yerleştir'de mesafe oturma yüzünün ortasına göredir; köşe parçalarında payı elle
   eklemek gerekir (bkz. 4.1). Parça ters durursa **180° çevir**'i deneyin.
@@ -307,3 +545,17 @@ denenmedi.
   okuma-yalnız eklentilere açık değil).
 - Seçim, girdi penceresinde çizilemediği için komut **o anki seçimi** okur: önce seçin, sonra
   komuta tıklayın.
+- Köşe aktarmanın kartındaki bağlantı noktası **deneme verisidir**; yeniden tanımlayın (7.2).
+- Yerleştirme kartındaki **Ters çevir** ve **180° çevir** köşe aktarmalarda işe yaramaz. Yön
+  yanlışsa bağlantı noktasını yeniden tanımlayın.
+- `hardware.place` koşulu tutmayan (etkin olmayan) noktaya parça koymaz. Yerleştirirken FFH'yi
+  koşul tutacak şekilde ayarlayın (Ek kilit 1 için FFH > 1200), sonra Koşullu Parçaları
+  Güncelle'yi çalıştırın.
+- Aynı STEP sonradan yerleştirilirse koşullu bir kopyayla aynı bileşeni paylaşabilir. O zaman
+  Koşullu Parçaları Güncelle'yi yeniden çalıştırın.
+- `assembly.bom` (malzeme listesi komutu) bastırılmış parçaları da sayar. Eklentinin Tij ve
+  Malzeme Listesi CSV'si saymaz.
+- Yerleştirme kartı kamera dönünce ekranda sabit kalır, parçayı izlemez.
+- Yarı saydam önizleme uzaktan soluk görünür; yakınlaştırın.
+- Eklenti henüz kütüphane panelinden başlatılamaz; **Eklentiler** menüsünden ya da **Model >
+  Eklentiler** grubundan çalıştırın.
