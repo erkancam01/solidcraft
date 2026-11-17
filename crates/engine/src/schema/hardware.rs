@@ -385,7 +385,8 @@ pub struct HardwarePlacement {
     pub slot: String,
     /// The part's STEP file.
     pub path: String,
-    /// The component the file came in as (shared by every placement of that file).
+    /// The component the file came in as (shared by every placement of that file on a slot
+    /// without a condition; a slot with one has a component of its own).
     pub component: u64,
     /// The part's occurrence on this slot.
     pub occurrence: u64,
@@ -398,7 +399,8 @@ pub struct HardwarePlacement {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HardwarePlaceParams {
-    /// The slot's id: one in use now, with nothing on it.
+    /// The slot's id: one with nothing on it. A slot whose condition does not hold now takes the
+    /// part hidden (its Import feature suppressed).
     pub slot: String,
     /// The part's STEP file (`.step`, `.stp`); its data card must give `connection`.
     pub path: String,
@@ -428,11 +430,16 @@ pub struct HardwarePlaced {
     pub occurrence: Option<u64>,
     /// The planar joint holding it on the slot; `null` for a preview.
     pub joint: Option<u64>,
-    /// The file was placed before: this is another occurrence of the same component.
+    /// The file was placed before: this is another occurrence of the same component (never on a
+    /// slot with a condition, whose part is a component of its own).
     pub reused: bool,
+    /// The slot's condition holds now. When it does not, the part comes in hidden: its Import
+    /// feature is suppressed until the condition's rules show it.
+    pub active: bool,
     /// Worked out only: the design is unchanged.
     pub preview: bool,
-    /// What the joint reported, or that the part did not come to the slot.
+    /// What the joint reported, that the part did not come to the slot, or that it came in
+    /// hidden.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     /// In the warn parameter-check mode: what the call's parameters got wrong.

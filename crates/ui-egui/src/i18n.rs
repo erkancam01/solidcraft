@@ -1314,7 +1314,7 @@ mod tests {
         let tr = Locale::for_language("tr");
         assert_eq!(tr.name(), "Türkçe");
         assert!(is_supported("tr"));
-        assert_eq!(tr.text("ui.preferences"), "Ayarlar");
+        assert_eq!(tr.text("ui.preferences"), "Tercihler");
         assert_eq!(tr.format("document.save_changes", &[("name", "My {design}")]), "My {design} içindeki değişiklikler kaydedilsin mi?");
         assert_eq!(tr.format("dialog.selected_count", &[("count", "2")]), "↖ 2 seçildi");
         assert_eq!(tr.label("NonExistentKey"), "NonExistentKey");

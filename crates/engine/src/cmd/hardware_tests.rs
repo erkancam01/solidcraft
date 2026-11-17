@@ -688,7 +688,7 @@ fn a_part_placed_on_a_slot_sits_on_it_and_follows_its_parameters() {
 }
 
 #[test]
-fn placing_needs_a_connection_a_slot_in_use_and_a_readable_part() {
+fn placing_needs_a_connection_a_slot_and_a_readable_part() {
     let lib = Library::new();
     let bare = part(&lib, "cylinder", false);
     let good = part(&lib, "washer", true);
@@ -697,16 +697,10 @@ fn placing_needs_a_connection_a_slot_in_use_and_a_readable_part() {
     let mut s = sash();
     let on = json!({"label": "Alt", "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600]});
     s.execute("hardware.slot.add", &on).unwrap();
-    let mut off = on.clone();
-    off["label"] = json!("Ek");
-    off["when"] = json!("FFH > 1300 mm");
-    s.execute("hardware.slot.add", &off).unwrap();
     let (undo, components, occurrences) = (s.undo.len(), s.doc.components.len(), s.doc.occurrences.len());
     let error = |s: &mut Session, p: Value| s.execute("hardware.place", &p).unwrap_err().to_string();
     let e = error(&mut s, json!({"slot": "alt", "path": bare}));
     assert!(e.contains(NO_CONNECTION), "{e}");
-    let e = error(&mut s, json!({"slot": "ek", "path": good}));
-    assert!(e.contains("not in use"), "{e}");
     let e = error(&mut s, json!({"slot": "missing", "path": good}));
     assert!(e.contains("no placement slot"), "{e}");
     let e = error(&mut s, json!({"slot": "alt", "path": broken}));
@@ -729,4 +723,78 @@ fn placing_needs_a_connection_a_slot_in_use_and_a_readable_part() {
     let again = s.execute("hardware.place", &json!({"slot": "alt", "path": good})).unwrap();
     assert_eq!(again["reused"], false, "its component went with it: {again}");
     assert_eq!(s.doc.metadata.get(SLOTS_KEY).unwrap()["placed"].as_array().map(Vec::len), Some(1), "the stale entry went");
+}
+
+/// A slot with a condition takes a part of its own (never another occurrence of one another
+/// placement brought in, nor one a slot without a condition shares), and one whose condition does
+/// not hold now takes it hidden: its Import feature suppressed, with a warning.
+#[test]
+fn a_conditional_slot_takes_a_part_of_its_own_hidden_while_its_condition_does_not_hold() {
+    let lib = Library::new();
+    let path = part(&lib, "washer", true);
+    let mut s = sash();
+    let slot = |label: &str, along: &str, when: Option<&str>| {
+        let mut p =
+            json!({"label": label, "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600], "along": along});
+        if let Some(when) = when {
+            p["when"] = json!(when);
+        }
+        p
+    };
+    for p in [
+        slot("Ek", "300 mm", Some("FFH > 1300 mm")),
+        slot("Ust", "900 mm", Some("FFH > 1000 mm")),
+        slot("Alt", "100 mm", None),
+        slot("Alt 2", "200 mm", None),
+    ] {
+        s.execute("hardware.slot.add", &p).unwrap();
+    }
+    let imports = |s: &Session, component: u64| -> Vec<bool> {
+        s.doc
+            .features
+            .iter()
+            .filter(|f| f.component == component && matches!(f.kind, solidcraft_doc::FeatureKind::Import { .. }))
+            .map(|f| f.suppressed)
+            .collect()
+    };
+    let bodies = |s: &Session, component: u64| s.model.state().bodies.iter().filter(|b| s.doc.model_body_component(b) == component).count();
+
+    // Out of its condition now: placed all the same, hidden, in one undo step.
+    let undo = s.undo.len();
+    let preview = s.execute("hardware.place", &json!({"slot": "ek", "path": path, "preview": true})).unwrap();
+    assert_eq!((preview["active"].as_bool(), preview["preview"].as_bool(), s.undo.len()), (Some(false), Some(true), undo), "{preview}");
+    let hidden = s.execute("hardware.place", &json!({"slot": "ek", "path": path})).unwrap();
+    assert_eq!(s.undo.len(), undo + 1, "one undo step");
+    assert_eq!((hidden["active"].as_bool(), hidden["reused"].as_bool()), (Some(false), Some(false)), "{hidden}");
+    assert!(hidden["warnings"].as_array().is_some_and(|w| w.iter().any(|w| w == HIDDEN)), "{hidden}");
+    let (ek, ek_occurrence) = (hidden["component"].as_u64().unwrap(), hidden["occurrence"].as_u64().unwrap());
+    assert_eq!(imports(&s, ek), [true], "its Import feature is suppressed");
+    assert_eq!(bodies(&s, ek), 0, "nothing of it shows");
+    let (o, ..) = connection_now(&s, ek_occurrence);
+    assert!(near(o, Vec3::new(900.0, 35.0, 300.0)), "it sits on its slot all the same: {o:?}");
+    let listed = slots(&mut s);
+    assert_eq!((listed[0]["active"].as_bool(), listed[0]["placed"]["occurrence"].as_u64()), (Some(false), Some(ek_occurrence)), "{listed:?}");
+
+    // The same file on another conditional slot, in use: a component of its own, shown.
+    let preview = s.execute("hardware.place", &json!({"slot": "ust", "path": path, "preview": true})).unwrap();
+    assert_eq!((preview["reused"].as_bool(), preview["active"].as_bool()), (Some(false), Some(true)), "{preview}");
+    let shown = s.execute("hardware.place", &json!({"slot": "ust", "path": path})).unwrap();
+    assert!(shown.get("warnings").is_none() && shown["reused"] == false && shown["active"] == true, "{shown}");
+    let ust = shown["component"].as_u64().unwrap();
+    assert_ne!(ust, ek, "never the hidden part's component");
+    assert_eq!(imports(&s, ust), [false]);
+    assert!(bodies(&s, ust) > 0);
+
+    // A slot without a condition never shares a conditional part's component; the next one shares
+    // its own.
+    let alt = s.execute("hardware.place", &json!({"slot": "alt", "path": path})).unwrap();
+    let component = alt["component"].as_u64().unwrap();
+    assert!(alt["reused"] == false && component != ek && component != ust, "{alt}");
+    let alt2 = s.execute("hardware.place", &json!({"slot": "alt-2", "path": path})).unwrap();
+    assert_eq!((alt2["reused"].as_bool(), alt2["component"].as_u64()), (Some(true), Some(component)), "{alt2}");
+
+    // Taken away, the hidden part takes its own component with it; the others stay.
+    let u = s.execute("hardware.unplace", &json!({"slot": "ek"})).unwrap();
+    assert_eq!(u["component_removed"].as_bool(), Some(true), "{u}");
+    assert!(imports(&s, ek).is_empty() && imports(&s, ust) == [false] && bodies(&s, ust) > 0);
 }

@@ -181,14 +181,23 @@ pub(crate) fn face_boundary(b: &solidcraft_engine::doc::ModelBody, index: usize)
 pub(crate) fn card_corner(app: &SolveApp) -> Option<egui::Pos2> {
     let t = Tokens::get();
     let rect = app.viewport.rect?;
+    Some(free_area(app, rect, None).left_top() + vec2(t.space_16, t.space_16))
+}
+
+/// The 3D view's (`rect`) free area: clear of the ribbon, the browser, the panels over the view
+/// and its navigation controls (the whole view when nothing is left). `own`, a card's place last
+/// frame, is no obstacle to that card.
+pub(crate) fn free_area(app: &SolveApp, rect: egui::Rect, own: Option<egui::Rect>) -> egui::Rect {
     let view = crate::shell::content_rect(app, rect);
     let mut obstacles = crate::shell::covered_rects(app);
     if let Some(layout) = &app.viewport.layout {
         obstacles.extend([layout.navigation, layout.axis_view]);
     }
+    if let Some(own) = own.map(|r| r.expand(1.0)) {
+        obstacles.retain(|o| !own.contains_rect(*o));
+    }
     let free = crate::viewport_layout::free_rect(view, &obstacles);
-    let free = if free.is_positive() { free } else { view };
-    Some(free.left_top() + vec2(t.space_16, t.space_16))
+    if free.is_positive() { free } else { view }
 }
 
 /// A frame drawn as its three axes from its origin, `len` long: x, y = z × x and z in the theme's
@@ -635,11 +644,14 @@ mod tests {
         assert_eq!(straight(&[]), None);
     }
 
-    /// A box part exported as STEP into a temporary folder, removed when dropped.
+    /// A box part exported as STEP into a temporary folder of its own (tests run side by side),
+    /// removed when dropped.
     struct Part(std::path::PathBuf);
     impl Part {
         fn new() -> Self {
-            let dir = std::env::temp_dir().join(format!("solidcraft-hardware-connection-{}", std::process::id()));
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("solidcraft-hardware-connection-{}-{n}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             let mut s = Session::default();

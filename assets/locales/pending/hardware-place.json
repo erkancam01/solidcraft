@@ -11,7 +11,8 @@
     "hardware_place.no_slot": "No suitable placement slot",
     "hardware_place.placed": "{part} placed on {slot}",
     "hardware_slot.deleted": "Placement slot deleted",
-    "hardware_slot.when_hint": "e.g. FFH > 1200 mm"
+    "hardware_slot.when_hint": "e.g. FFH > 1200 mm",
+    "hardware_place.hidden": "The slot's condition does not hold now: the part was added hidden. Run 'Koşullu Parçaları Güncelle'."
   },
   "tr": {
     "cmd.hardware.place": "Aksesuar Yerleştir",
@@ -25,7 +26,8 @@
     "hardware_place.no_slot": "Uygun yerleşim noktası yok",
     "hardware_place.placed": "{part}, {slot} noktasına yerleştirildi",
     "hardware_slot.deleted": "Yerleşim noktası silindi",
-    "hardware_slot.when_hint": "örn. FFH > 1200 mm"
+    "hardware_slot.when_hint": "örn. FFH > 1200 mm",
+    "hardware_place.hidden": "Nokta şu an koşul dışında; parça gizli eklendi. 'Koşullu Parçaları Güncelle' çalıştırın."
   },
   "de": {
     "cmd.hardware.place": "Beschlag platzieren",
@@ -39,7 +41,8 @@
     "hardware_place.no_slot": "Keine passende Einbauposition",
     "hardware_place.placed": "{part} auf {slot} platziert",
     "hardware_slot.deleted": "Einbauposition gelöscht",
-    "hardware_slot.when_hint": "z. B. FFH > 1200 mm"
+    "hardware_slot.when_hint": "z. B. FFH > 1200 mm",
+    "hardware_place.hidden": "Die Bedingung der Position gilt gerade nicht: Das Teil wurde ausgeblendet eingefügt. 'Koşullu Parçaları Güncelle' ausführen."
   },
   "ko": {
     "cmd.hardware.place": "하드웨어 배치",
@@ -53,7 +56,8 @@
     "hardware_place.no_slot": "알맞은 배치 위치가 없습니다",
     "hardware_place.placed": "{part}을(를) {slot}에 배치했습니다",
     "hardware_slot.deleted": "배치 위치를 삭제했습니다",
-    "hardware_slot.when_hint": "예: FFH > 1200 mm"
+    "hardware_slot.when_hint": "예: FFH > 1200 mm",
+    "hardware_place.hidden": "지금은 이 위치의 조건이 맞지 않아 부품을 숨긴 상태로 추가했습니다. 'Koşullu Parçaları Güncelle'를 실행하세요."
   },
   "ar": {
     "cmd.hardware.place": "وضع قطعة التجهيز",
@@ -67,7 +71,8 @@
     "hardware_place.no_slot": "لا يوجد موضع تركيب مناسب",
     "hardware_place.placed": "وُضعت {part} على {slot}",
     "hardware_slot.deleted": "حُذف موضع التركيب",
-    "hardware_slot.when_hint": "مثال: FFH > 1200 mm"
+    "hardware_slot.when_hint": "مثال: FFH > 1200 mm",
+    "hardware_place.hidden": "شرط الموضع غير متحقق الآن: أُضيفت القطعة مخفية. شغِّل 'Koşullu Parçaları Güncelle'."
   },
   "he": {
     "cmd.hardware.place": "הצבת פרזול",
@@ -81,7 +86,8 @@
     "hardware_place.no_slot": "אין נקודת הצבה מתאימה",
     "hardware_place.placed": "{part} הוצב על {slot}",
     "hardware_slot.deleted": "נקודת ההצבה נמחקה",
-    "hardware_slot.when_hint": "לדוגמה FFH > 1200 mm"
+    "hardware_slot.when_hint": "לדוגמה FFH > 1200 mm",
+    "hardware_place.hidden": "התנאי של הנקודה אינו מתקיים כעת: החלק נוסף מוסתר. הפעילו את 'Koşullu Parçaları Güncelle'."
   },
   "ja": {
     "cmd.hardware.place": "金具を配置",
@@ -95,7 +101,8 @@
     "hardware_place.no_slot": "適した配置位置がありません",
     "hardware_place.placed": "{part} を {slot} に配置しました",
     "hardware_slot.deleted": "配置位置を削除しました",
-    "hardware_slot.when_hint": "例: FFH > 1200 mm"
+    "hardware_slot.when_hint": "例: FFH > 1200 mm",
+    "hardware_place.hidden": "この位置の条件は現在満たされていないため、部品を非表示で追加しました。'Koşullu Parçaları Güncelle' を実行してください。"
   },
   "vi": {
     "cmd.hardware.place": "Đặt phụ kiện",
@@ -109,7 +116,8 @@
     "hardware_place.no_slot": "Không có vị trí lắp phù hợp",
     "hardware_place.placed": "Đã đặt {part} vào {slot}",
     "hardware_slot.deleted": "Đã xóa vị trí lắp",
-    "hardware_slot.when_hint": "vd. FFH > 1200 mm"
+    "hardware_slot.when_hint": "vd. FFH > 1200 mm",
+    "hardware_place.hidden": "Điều kiện của vị trí hiện không thỏa: phụ kiện đã được thêm ở dạng ẩn. Hãy chạy 'Koşullu Parçaları Güncelle'."
   },
   "zh": {
     "cmd.hardware.place": "放置五金件",
@@ -123,6 +131,7 @@
     "hardware_place.no_slot": "没有合适的安装位置",
     "hardware_place.placed": "已将 {part} 放置到 {slot}",
     "hardware_slot.deleted": "已删除安装位置",
-    "hardware_slot.when_hint": "例如 FFH > 1200 mm"
+    "hardware_slot.when_hint": "例如 FFH > 1200 mm",
+    "hardware_place.hidden": "此位置的条件当前不成立：零件已隐藏添加。请运行 'Koşullu Parçaları Güncelle'。"
   }
 }
