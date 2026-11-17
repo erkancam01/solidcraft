@@ -6712,7 +6712,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         && mode.is_none()
         && app.session.active_sketch.is_none()
         && !held
-        && !crate::hardware_place::active(app)
+        && !crate::hardware_connection::any_mode(app)
     {
         if resp.drag_started_by(egui::PointerButton::Primary)
             // Physical Ctrl on macOS is not the primary click-selection modifier, but must

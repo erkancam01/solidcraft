@@ -338,7 +338,9 @@ fn slots(s: &mut Session) -> Vec<Value> {
 fn a_slot_places_along_and_across_the_corner_frame() {
     // The right profile's outer face at its bottom corner: z out of the face (+X), the frame's x
     // along the face's other edge (+Y) and y up the picked edge (+Z), so along is the second value.
-    let corner = Corner { origin: Vec3::new(900.0, 0.0, 0.0), x: Vec3::Y, y: Vec3::Z, z: Vec3::X, along_x: false };
+    let corner = Corner { origin: Vec3::new(900.0, 0.0, 0.0), x: Vec3::Y, y: Vec3::Z, z: Vec3::X, along: Vec3::Z, across: Vec3::Y };
+    let up = corner.axes();
+    assert_eq!(up, Axes { along: [0.0, 1.0], across: [1.0, 0.0], turn: 90.0 });
     let p = place(&corner, 600.0, 35.0, 0);
     assert_eq!(p.values, [35.0, 600.0, 90.0], "across, along, a quarter turn so the part runs up the edge");
     assert!(near(p.origin, Vec3::new(900.0, 35.0, 600.0)) && near(p.x, Vec3::Z) && near(p.y, -Vec3::Y) && near(p.z, Vec3::X), "{p:?}");
@@ -346,21 +348,24 @@ fn a_slot_places_along_and_across_the_corner_frame() {
     assert_eq!(p.values[2], -90.0);
     assert!(near(p.x, -Vec3::Z), "turned back down the edge: {p:?}");
     // The top corner: x runs down the picked edge, so along is the first value and no turn.
-    let corner = Corner { origin: Vec3::new(900.0, 0.0, 1200.0), x: -Vec3::Z, y: Vec3::Y, z: Vec3::X, along_x: true };
+    let corner = Corner { origin: Vec3::new(900.0, 0.0, 1200.0), x: -Vec3::Z, y: Vec3::Y, z: Vec3::X, along: -Vec3::Z, across: Vec3::Y };
+    let down = corner.axes();
+    assert_eq!(down, Axes { along: [1.0, 0.0], across: [0.0, 1.0], turn: 0.0 });
     let p = place(&corner, 100.0, 35.0, 0);
     assert_eq!(p.values, [100.0, 35.0, 0.0]);
     assert!(near(p.origin, Vec3::new(900.0, 35.0, 1100.0)) && near(p.x, -Vec3::Z) && near(p.y, Vec3::Y), "{p:?}");
     let p = place(&corner, 0.0, 35.0, 270);
     assert_eq!(p.values[2], -90.0);
     assert!(near(p.x, -Vec3::Y) && near(p.y, -Vec3::Z), "{p:?}");
-    assert_eq!(turn_degrees(false, 270), 0);
-    assert_eq!(turn_degrees(true, 90), 90);
-    assert_eq!(turn_degrees(false, 180), -90);
+    assert_eq!(turn_degrees(90.0, 270), 0.0);
+    assert_eq!(turn_degrees(0.0, 90), 90.0);
+    assert_eq!(turn_degrees(90.0, 180), -90.0);
+    assert_eq!(turn_degrees(45.0, 270), -45.0);
 
-    let (values, limits) = joint_values(false, "KOL", &Across::Held(35.0), 90.0);
+    let (values, limits) = joint_values(&up, "KOL", 600.0, &Across::Held(35.0), 90.0);
     assert_eq!(values, [json!(35.0), json!("KOL"), json!(90.0)]);
     assert_eq!(limits, [json!([35.0, 35.0]), Value::Null, json!([90.0, 90.0])]);
-    let (values, limits) = joint_values(true, "0", &Across::Expression("W / 2".into()), 0.0);
+    let (values, limits) = joint_values(&down, "0", 0.0, &Across::Expression("W / 2".into()), 0.0);
     assert_eq!(values, [json!("0"), json!("W / 2"), json!(0.0)]);
     assert_eq!(limits, [Value::Null, Value::Null, json!([0.0, 0.0])], "an expression across drives it, unheld");
 
@@ -368,6 +373,103 @@ fn a_slot_places_along_and_across_the_corner_frame() {
     assert_eq!(slug("Ek kilit 1"), "ek-kilit-1");
     assert_eq!(slug("İç  KÖŞE!"), "ic-kose");
     assert_eq!(slug("…"), "slot");
+
+    // A mitred corner (45°): the frame's x runs along the corner's other edge, so each shift
+    // takes a share of along and of across, as an expression while one names a parameter.
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let mitre = Corner { origin: Vec3::ZERO, x: Vec3::X, y: Vec3::Y, z: Vec3::Z, along: Vec3::new(h, h, 0.0), across: Vec3::new(h, -h, 0.0) };
+    let axes = mitre.axes();
+    assert!((axes.turn - 45.0).abs() < 1e-9, "{axes:?}");
+    let (values, limits) = joint_values(&axes, "KOL", 50.0, &Across::Held(10.0), axes.turn);
+    assert_eq!(values[..2], [json!("0.7071067812*(KOL) + 0.7071067812*(10 mm)"), json!("0.7071067812*(KOL) - 0.7071067812*(10 mm)")]);
+    assert_eq!(limits[..2], [Value::Null, Value::Null], "the expressions drive them");
+    let (values, limits) = joint_values(&axes, "50 mm", 50.0, &Across::Held(10.0), axes.turn);
+    assert_eq!(values[..2], [json!(42.426407), json!(28.284271)], "numbers when neither names a parameter");
+    assert_eq!(limits[..2], [json!([42.426407, 42.426407]), json!([28.284271, 28.284271])]);
+    let p = place(&mitre, 50.0, 10.0, 0);
+    assert!(near(p.origin, Vec3::new(60.0 * h, 40.0 * h, 0.0)) && near(p.x, mitre.along), "{p:?}");
+}
+
+/// A mitred profile's floor: a parallelogram 200 mm along +X, its other side `side` mm long
+/// leaning `angle` deg from +X at the corner at the origin, 20 mm thick up Z; `KOL` 50 mm.
+fn leaning(angle: f64, side: f64) -> (Session, Vec3) {
+    let mut s = Session::default();
+    s.execute("parameters.add", &json!({"name": "KOL", "expression": "50 mm"})).unwrap();
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let lean = Vec3::new(side * cos, side * sin, 0.0);
+    let profile = [[0.0, 0.0], [200.0, 0.0], [200.0 + lean.x, lean.y], [lean.x, lean.y]];
+    for (command, params) in [
+        ("sketch.create", json!({"plane": {"origin": [0, 0, 0], "x_dir": [1, 0, 0], "y_dir": [0, 1, 0]}, "name": "Profile"})),
+        ("sketch.line", json!({"points": profile, "closed": true})),
+        ("sketch.finish", json!({})),
+        ("solid.extrude", json!({"distance": 20, "operation": "new", "body_name": "Profil"})),
+    ] {
+        s.execute(command, &params).unwrap_or_else(|e| panic!("{command}: {e}"));
+    }
+    (s, lean)
+}
+
+/// A slot at a corner that is not square (a mitred profile's 45°, and 89°) goes along the edge it
+/// was picked on and across the floor square to that edge, its middle too, and the part placed
+/// there follows a parameter along that edge.
+#[test]
+fn a_slot_at_a_corner_that_is_not_square_runs_along_its_picked_edge() {
+    let lib = Library::new();
+    let path = part(&lib, "washer", true);
+    for angle in [45.0, 89.0] {
+        let (mut s, lean) = leaning(angle, 100.0);
+        let top = |v: Vec3| [v.x, v.y, 20.0];
+        let corner = Vec3::new(0.0, 0.0, 20.0);
+        let on = top(Vec3::new(100.0, 0.0, 0.0) + lean * 0.5);
+        let de = Vec3::new(lean.x, lean.y, 0.0) / 100.0;
+        // Square to the leaning edge, towards the face (the +X edge's side).
+        let dn = Vec3::new(de.y, -de.x, 0.0);
+        let inside = |p: Vec3| {
+            let corners = [Vec3::ZERO, Vec3::new(200.0, 0.0, 0.0), Vec3::new(200.0, 0.0, 0.0) + lean, lean];
+            (0..4).all(|i| (corners[(i + 1) % 4] - corners[i]).cross(p - corners[i]).z > 0.0) && (p.z - 20.0).abs() < 1e-6
+        };
+        let slot = |label: &str, at: Vec3, edge: Vec3, across: &str| {
+            json!({"label": label, "group": "Makas ve kol", "edge": top(edge), "corner": top(at), "on": on, "along": "KOL", "across": across})
+        };
+        // The leaning edge from the corner at the origin, whose frame's x is the +X edge.
+        let r = s.execute("hardware.slot.add", &slot("Kilit", corner, lean * 0.5, "10 mm")).unwrap();
+        let (o, x, z) = slot_frame(&r);
+        let d = o - corner;
+        assert!((d.dot(de) - 50.0).abs() < 1e-6 && (d.dot(dn) - 10.0).abs() < 1e-6, "{angle}°: along the picked edge, across square to it: {r}");
+        assert!(inside(o) && near(x, de) && near(z, Vec3::Z), "{angle}°: {r}");
+        assert!(r["values"][0].as_str().is_some_and(|v| v.contains("KOL")) && r["values"][1].as_str().is_some_and(|v| v.contains("KOL")), "{r}");
+        // The middle across the picked edge: half the face's width square to that edge.
+        let r = s.execute("hardware.slot.add", &slot("Orta", corner, lean * 0.5, "middle")).unwrap();
+        let (o, ..) = slot_frame(&r);
+        let width = 200.0 * angle.to_radians().sin();
+        assert!(((o - corner).dot(dn) - width / 2.0).abs() < 1e-6 && ((o - corner).dot(de) - 50.0).abs() < 1e-6, "{angle}°: {r}");
+        // The long +X edge from the far corner (a mitred profile's side), whose frame's x is the
+        // leaning edge there: along it back towards the origin, the middle half the face's width
+        // square to it.
+        let far = Vec3::new(200.0, 0.0, 20.0);
+        let r = s.execute("hardware.slot.add", &slot("Yan", far, Vec3::new(100.0, 0.0, 0.0), "middle")).unwrap();
+        let (o, x, _) = slot_frame(&r);
+        assert!(near(o, Vec3::new(150.0, lean.y / 2.0, 20.0)) && near(x, -Vec3::X) && inside(o), "{angle}°: {r}");
+        assert!(r["values"][0].as_str().is_some_and(|v| v.contains("KOL")), "{r}");
+        // From the origin along +X, the frame's own x: as at a square corner.
+        let r = s.execute("hardware.slot.add", &slot("Alt", corner, Vec3::new(100.0, 0.0, 0.0), "middle")).unwrap();
+        let (o, x, _) = slot_frame(&r);
+        assert!(near(o, Vec3::new(50.0, lean.y / 2.0, 20.0)) && near(x, Vec3::X), "{angle}°: {r}");
+        assert_eq!(r["values"][0], "KOL", "{r}");
+
+        // A part placed on the leaning slot sits on it and follows KOL along the edge.
+        let placed = s.execute("hardware.place", &json!({"slot": "kilit", "path": path})).unwrap();
+        assert!(placed.get("warnings").is_none(), "{placed}");
+        let occurrence = placed["occurrence"].as_u64().unwrap();
+        let (o, x, z) = connection_now(&s, occurrence);
+        assert!(near(o, corner + de * 50.0 + dn * 10.0) && near(x, de) && near(z, -Vec3::Z), "{angle}°: {o:?} {x:?} {z:?}");
+        s.execute("parameters.change", &json!({"changes": {"KOL": "70 mm"}})).unwrap();
+        let (o, x, _) = connection_now(&s, occurrence);
+        assert!(near(o, corner + de * 70.0 + dn * 10.0) && near(x, de), "{angle}°: {o:?} {x:?}");
+        let listed = slots(&mut s);
+        let (o, ..) = slot_frame(&listed[0]);
+        assert!(near(o, corner + de * 70.0 + dn * 10.0) && inside(o), "{angle}°: {:?}", listed[0]);
+    }
 }
 
 #[test]
@@ -797,4 +899,108 @@ fn a_conditional_slot_takes_a_part_of_its_own_hidden_while_its_condition_does_no
     let u = s.execute("hardware.unplace", &json!({"slot": "ek"})).unwrap();
     assert_eq!(u["component_removed"].as_bool(), Some(true), "{u}");
     assert!(imports(&s, ek).is_empty() && imports(&s, ust) == [false] && bodies(&s, ust) > 0);
+}
+
+/// Editing a slot that holds a part moves the part with it in the same undo step, keeping the turn
+/// given to it there (a flip of the slot flips it); deleting the slot takes the part away too, in
+/// one step that undo brings back.
+#[test]
+fn editing_or_deleting_a_slot_takes_its_part_along() {
+    let lib = Library::new();
+    let path = part(&lib, "washer", true);
+    let mut s = sash();
+    s.execute(
+        "hardware.slot.add",
+        &json!({"label": "Kol", "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600], "along": "KOL"}),
+    )
+    .unwrap();
+    let r = s.execute("hardware.place", &json!({"slot": "kol", "path": path})).unwrap();
+    let (occurrence, joint) = (r["occurrence"].as_u64().unwrap(), r["joint"].as_u64().unwrap());
+    // Turned half a turn on its slot, as the placement card's Turn 180° does.
+    s.execute("joint.edit", &json!({"joint": joint, "angle": 180})).unwrap();
+    let (_, turned, _) = connection_now(&s, occurrence);
+    let undo = s.undo.len();
+    s.execute("hardware.slot.edit", &json!({"id": "kol", "along": "KOL - 100 mm", "label": "Kol rozet"})).unwrap();
+    assert_eq!(s.undo.len(), undo + 1, "one undo step");
+    let (o, x, z) = connection_now(&s, occurrence);
+    assert!(near(o, Vec3::new(900.0, 35.0, 500.0)) && near(x, turned) && near(z, -Vec3::X), "moved with its slot, still turned: {o:?} {x:?} {z:?}");
+    let listed = slots(&mut s);
+    let now = listed[0]["placed"]["joint"].as_u64().unwrap();
+    let j = s.doc.assembly.joints.iter().find(|j| j.id == now).expect("the part's joint");
+    assert_eq!((j.b.occurrence, j.name.as_str()), (occurrence, "Kol rozet: P-washer"));
+    assert_eq!(s.doc.assembly.joints.iter().filter(|j| j.b.occurrence == occurrence).count(), 1, "the old joint went");
+    // It follows the slot's parameters as before.
+    s.execute("parameters.change", &json!({"changes": {"KOL": "700 mm"}})).unwrap();
+    assert!(near(connection_now(&s, occurrence).0, Vec3::new(900.0, 35.0, 600.0)));
+    s.execute("hardware.slot.edit", &json!({"id": "kol", "flip": true})).unwrap();
+    assert!(near(connection_now(&s, occurrence).2, Vec3::X), "a flipped slot flips its part");
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert!(near(connection_now(&s, occurrence).2, -Vec3::X), "undo puts it back");
+
+    let (undo, components) = (s.undo.len(), s.doc.components.len());
+    let r = s.execute("hardware.slot.delete", &json!({"id": "kol"})).unwrap();
+    assert_eq!(s.undo.len(), undo + 1, "one undo step");
+    assert_eq!((r["slots"].as_u64(), r["unplaced"]["occurrence"].as_u64()), (Some(0), Some(occurrence)), "{r}");
+    assert!(!s.doc.occurrences.iter().any(|o| o.id == occurrence) && s.doc.components.len() < components, "the part and its component went");
+    assert!(!s.doc.assembly.joints.iter().any(|j| j.b.occurrence == occurrence));
+    assert_eq!(s.doc.metadata.get(SLOTS_KEY).unwrap()["placed"], json!([]));
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert!(s.doc.occurrences.iter().any(|o| o.id == occurrence));
+    assert_eq!(slots(&mut s)[0]["placed"]["occurrence"].as_u64(), Some(occurrence));
+    // A slot without a part deletes as before.
+    s.execute("hardware.unplace", &json!({"slot": "kol"})).unwrap();
+    let r = s.execute("hardware.slot.delete", &json!({"id": "kol"})).unwrap();
+    assert!(r.get("unplaced").is_none(), "{r}");
+}
+
+/// A part placed before whose component comes and goes on its own (its Import feature
+/// suppressed, or switched by a configuration rule) is never placed again as another occurrence
+/// of that component: the new part would come and go with it.
+#[test]
+fn a_hidden_or_switched_part_is_not_placed_again_as_another_occurrence() {
+    let lib = Library::new();
+    let path = part(&lib, "washer", true);
+    let mut s = sash();
+    for (label, along) in [("Alt", "100 mm"), ("Alt 2", "200 mm"), ("Alt 3", "300 mm")] {
+        s.execute(
+            "hardware.slot.add",
+            &json!({"label": label, "group": "Makas ve kol", "edge": [900, 0, 600], "corner": [900, 0, 0], "on": [900, 35, 600], "along": along}),
+        )
+        .unwrap();
+    }
+    let import = |s: &Session, component: u64| {
+        s.doc.features.iter().find(|f| f.component == component && matches!(f.kind, solidcraft_doc::FeatureKind::Import { .. })).unwrap().id
+    };
+    let first = s.execute("hardware.place", &json!({"slot": "alt", "path": path})).unwrap()["component"].as_u64().unwrap();
+    assert_eq!(s.execute("hardware.place", &json!({"slot": "alt-2", "path": path, "preview": true})).unwrap()["reused"], true);
+    // A rule switches it (as Koşullu Parçaları Güncelle's do).
+    let feature = import(&s, first);
+    let rule: solidcraft_doc::config::ConfigRule = serde_json::from_value(json!({"id": "kosul-alt-off", "name": "Koşullu parça: Alt",
+        "condition": {"type": "always"}, "effect": {"type": "drive_suppression", "feature": feature, "value": false}}))
+    .unwrap();
+    s.doc_mut().configs.rules.push(rule);
+    let second = s.execute("hardware.place", &json!({"slot": "alt-2", "path": path})).unwrap();
+    assert!(second["reused"] == false && second["component"].as_u64() != Some(first), "{second}");
+    // Suppressed: the same.
+    let other = second["component"].as_u64().unwrap();
+    s.execute("timeline.suppress", &json!({"feature": import(&s, other), "suppressed": true})).unwrap();
+    let preview = s.execute("hardware.place", &json!({"slot": "alt-3", "path": path, "preview": true})).unwrap();
+    assert_eq!(preview["reused"], false, "{preview}");
+    let third = s.execute("hardware.place", &json!({"slot": "alt-3", "path": path})).unwrap();
+    assert!(third["reused"] == false && ![Some(first), Some(other)].contains(&third["component"].as_u64()), "{third}");
+}
+
+/// A data card an editor saved with a UTF-8 byte order mark (Notepad) reads, lists and merges.
+#[test]
+fn a_card_with_a_byte_order_mark_reads() {
+    let lib = Library::new();
+    let part = lib.file("Menteşe grubu/hinge.step", "ISO-10303-21;");
+    lib.file("Menteşe grubu/hinge.json", "\u{feff}{\"part_no\": \"H-1\", \"supplier\": \"kept\"}");
+    let r = list(&lib.folder()).unwrap();
+    let p = r["parts"].as_array().unwrap().iter().find(|p| p["name"] == "hinge").unwrap().clone();
+    assert!(p["card_error"].is_null() && p["card"]["part_no"] == "H-1", "{p}");
+    let r = Session::default().execute("hardware.card.set", &json!({"path": part, "description": "Hinge"})).unwrap();
+    assert_eq!((r["card"]["part_no"].as_str(), r["card"]["description"].as_str()), (Some("H-1"), Some("Hinge")), "{r}");
+    let written = std::fs::read_to_string(lib.0.join("Menteşe grubu/hinge.json")).unwrap();
+    assert!(written.contains("\"supplier\": \"kept\"") && !written.starts_with('\u{feff}'), "{written}");
 }

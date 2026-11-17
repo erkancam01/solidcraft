@@ -65,6 +65,8 @@ fn idle(app: &SolveApp) -> bool {
         && app.viewport.context_menu.is_none()
         && !crate::toolbar::unfinished(app)
         && !crate::select_other::is_open(app)
+        // A connection point or a slot picked, or a part placed on slots: the picks are theirs.
+        && !crate::hardware_connection::any_mode(app)
 }
 
 /// Two references on two different parts, at least one of which is not the design itself.

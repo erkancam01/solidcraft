@@ -32,6 +32,10 @@ use crate::{Ana, Hata};
 pub const YERLESIM_ANAHTARI: &str = "tr.aksesuar.yerlesim";
 /// The ids of this entry's rules start with this.
 pub const KURAL_ONEKI: &str = "kosul-";
+/// The names of this entry's rules start with this: a rule whose id starts with
+/// [`KURAL_ONEKI`] is this entry's when its name does too (or, from before 0.1.5, when its id is
+/// one this entry makes for a slot of the design).
+pub const AD_ONEKI: &str = "Koşullu parça: ";
 /// The derived condition parameters' names start with this.
 pub const PARAMETRE_ONEKI: &str = "KOSUL_";
 /// SolidCraft's limits: a rule id at most 64 characters, a parameter name at most 64.
@@ -39,6 +43,19 @@ const EN_UZUN_KURAL: usize = 64;
 const EN_UZUN_PARAMETRE: usize = 64;
 /// How much of a slot id goes into a rule id (`kosul-` + this + `-off-NN`).
 const KURAL_KOKU: usize = EN_UZUN_KURAL - KURAL_ONEKI.len() - 8;
+/// A longer slot id goes in cut to this, then `-` and its [`ozet`].
+const OKUNUR: usize = 40;
+
+/// A short stable digest of `metin`: 8 hex digits of its 32-bit FNV-1a hash. A long slot id cut
+/// to fit a rule id or a parameter name keeps it, so two ids alike at the start stay apart.
+pub fn ozet(metin: &str) -> String {
+    let mut h: u32 = 0x811c_9dc5;
+    for b in metin.bytes() {
+        h ^= u32::from(b);
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    format!("{h:08x}")
+}
 
 /// What `hardware.place` put on a slot: its component, occurrence and joint.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,12 +166,39 @@ pub fn karsilastirma(when: &str) -> Option<(String, &'static str, String)> {
 }
 
 /// The derived condition parameter's name for a slot: `KOSUL_` and the slot id in capitals,
-/// `-` and anything else not a letter or digit as `_`, at most 64 characters.
+/// `-` and anything else not a letter or digit as `_`; one that would be over 64 characters,
+/// the id's first 40 and `_` and the whole id's [`ozet`] in capitals.
 pub fn kosul_parametresi(slot: &str) -> String {
     let kok: String = slot.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '_' }).collect();
-    let mut ad = format!("{PARAMETRE_ONEKI}{kok}");
-    ad.truncate(EN_UZUN_PARAMETRE);
-    ad
+    let ad = format!("{PARAMETRE_ONEKI}{kok}");
+    if ad.len() <= EN_UZUN_PARAMETRE { ad } else { ozel_parametre(slot) }
+}
+
+/// A slot's condition parameter name that no other slot's is: `KOSUL_`, the id's first 40 in
+/// capitals and `_` and its [`ozet`] in capitals.
+fn ozel_parametre(slot: &str) -> String {
+    let kok: String = slot.chars().take(OKUNUR).map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '_' }).collect();
+    format!("{PARAMETRE_ONEKI}{kok}_{}", ozet(slot).to_ascii_uppercase())
+}
+
+/// The condition parameter of each of `slots` (ids, in the slot list's order): its
+/// [`kosul_parametresi`], or, when an earlier slot's is the same (`a-b` and `a_b`), its own
+/// [`ozel_parametre`], so no two slots share one.
+pub fn parametre_adlari<'a>(slots: impl IntoIterator<Item = &'a str>) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let mut alinan = BTreeSet::new();
+    for slot in slots {
+        if out.contains_key(slot) {
+            continue;
+        }
+        let mut ad = kosul_parametresi(slot);
+        if !alinan.insert(ad.clone()) {
+            ad = ozel_parametre(slot);
+            alinan.insert(ad.clone());
+        }
+        out.insert(slot.to_string(), ad);
+    }
+    out
 }
 
 /// How a slot's condition reaches the rules.
@@ -179,18 +223,35 @@ impl Kosul {
 
 /// `when` of slot `slot` for the rules. `parametreler`: the design's parameter names.
 pub fn kosul(when: &str, slot: &str, parametreler: &BTreeSet<String>) -> Kosul {
+    kosul_adiyla(when, &kosul_parametresi(slot), parametreler)
+}
+
+/// [`kosul`], a derived condition kept in the parameter `ad`.
+pub fn kosul_adiyla(when: &str, ad: &str, parametreler: &BTreeSet<String>) -> Kosul {
     let t = when.trim();
     if parametreler.contains(t) {
         return Kosul::Dogrudan { parametre: t.to_string(), op: "ne", ifade: "0".into() };
     }
     match karsilastirma(t) {
         Some((parametre, op, ifade)) if parametreler.contains(&parametre) => Kosul::Dogrudan { parametre, op, ifade },
-        _ => Kosul::Turetilmis { parametre: kosul_parametresi(slot), ifade: t.to_string() },
+        _ => Kosul::Turetilmis { parametre: ad.to_string(), ifade: t.to_string() },
     }
 }
 
-/// The root of a slot's rule ids: `kosul-<slot id>`, the id cut to fit SolidCraft's 64.
+/// The root of a slot's rule ids: `kosul-<slot id>`; an id too long for SolidCraft's 64, its
+/// first 40 characters and `-` and the whole id's [`ozet`], so two long ids alike at the start
+/// get rules of their own.
 pub fn kural_koku(slot: &str) -> String {
+    if slot.chars().count() <= KURAL_KOKU {
+        format!("{KURAL_ONEKI}{slot}")
+    } else {
+        format!("{KURAL_ONEKI}{}-{}", slot.chars().take(OKUNUR).collect::<String>(), ozet(slot))
+    }
+}
+
+/// The root 0.1.4 and before gave a slot's rule ids: the id cut to fit (the same as
+/// [`kural_koku`]'s for an id that fits).
+fn eski_kural_koku(slot: &str) -> String {
     format!("{KURAL_ONEKI}{}", slot.chars().take(KURAL_KOKU).collect::<String>())
 }
 
@@ -204,19 +265,34 @@ pub fn noktanin_kurali(id: &str, kok: &str) -> bool {
     })
 }
 
+/// Whether rule `id` is one this entry makes, or made before 0.1.5, for slot `slot`.
+pub fn noktanin_kurallari(id: &str, slot: &str) -> bool {
+    noktanin_kurali(id, &kural_koku(slot)) || noktanin_kurali(id, &eski_kural_koku(slot))
+}
+
+/// Whether a rule (as `config.rules` lists it) is this entry's: its id starts with
+/// [`KURAL_ONEKI`] and its name with [`AD_ONEKI`]; or, made before 0.1.5 (no such name), its id is
+/// exactly one this entry makes for one of `slots`. A rule of the user's own whose id happens to
+/// start with `kosul-` is never changed or removed.
+pub fn bizim_kural(kural: &Value, slots: &[Nokta]) -> bool {
+    let Some(id) = str_of(kural, "id").filter(|id| id.starts_with(KURAL_ONEKI)) else { return false };
+    str_of(kural, "name").is_some_and(|ad| ad.starts_with(AD_ONEKI)) || slots.iter().any(|n| noktanin_kurallari(id, &n.id))
+}
+
 /// The two rules for feature `ozellik` of slot `n`'s part (`sira`: the feature's place among the
 /// part's features, from 0; the first one's ids carry no number).
 pub fn kurallar(n: &Nokta, k: &Kosul, ozellik: u64, sira: usize) -> [Value; 2] {
     let kok = kural_koku(&n.id);
     let ek = if sira == 0 { String::new() } else { format!("-{}", sira + 1) };
-    let kosul_metni = kisalt(n.kosul.as_deref().unwrap_or(""), 60);
-    let etiket = kisalt(&n.etiket, 40);
+    // Within SolidCraft's 128 characters: the prefix, 33, 6, 57 and the rest.
+    let kosul_metni = kisalt(n.kosul.as_deref().unwrap_or(""), 56);
+    let etiket = kisalt(&n.etiket, 32);
     let ad_ek = if sira == 0 { String::new() } else { format!(" ({})", sira + 1) };
     let rule = |var: bool| {
         let (id, ad) = if var {
-            (format!("{kok}-on{ek}"), format!("{etiket}{ad_ek}: {kosul_metni} iken var"))
+            (format!("{kok}-on{ek}"), format!("{AD_ONEKI}{etiket}{ad_ek}: {kosul_metni} iken var"))
         } else {
-            (format!("{kok}-off{ek}"), format!("{etiket}{ad_ek}: {kosul_metni} değilken yok"))
+            (format!("{kok}-off{ek}"), format!("{AD_ONEKI}{etiket}{ad_ek}: {kosul_metni} değilken yok"))
         };
         json!({"id": id, "name": ad, "enabled": true, "condition": k.kosul(var),
             "effect": {"type": "drive_suppression", "feature": ozellik, "value": !var}})
@@ -444,8 +520,21 @@ pub fn calistir(ana: &mut dyn Ana, _p: &Value) -> Result<Value, Hata> {
     let liste = ana.komut("hardware.slot.list", &json!({}))?;
     let tum = noktalar(&liste);
     let kural_cevabi = ana.komut("config.rules", &json!({}))?;
-    let eski_kurallar: Vec<(String, Option<u64>)> =
-        mevcut_kurallar(&kural_cevabi).into_iter().filter(|(id, _)| id.starts_with(KURAL_ONEKI)).collect();
+    // This entry's rules only: never a rule of the user's own whose id starts the same way.
+    let eski_kurallar: Vec<(String, Option<u64>)> = kural_cevabi
+        .get("rules")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|r| bizim_kural(r, &tum))
+        .filter_map(|r| Some((str_of(r, "id")?.to_string(), r.pointer("/effect/feature").and_then(Value::as_u64))))
+        .collect();
+    // Each conditional slot's own condition parameter, never another slot's.
+    let parametre_adi = parametre_adlari(tum.iter().filter(|n| n.kosul.is_some()).map(|n| n.id.as_str()));
+    let kosul_of = |n: &Nokta, adlar: &BTreeSet<String>| {
+        let ad = parametre_adi.get(&n.id).cloned().unwrap_or_else(|| kosul_parametresi(&n.id));
+        kosul_adiyla(n.kosul.as_deref().unwrap_or(""), &ad, adlar)
+    };
     let adaylar: Vec<&Nokta> = tum.iter().filter(|n| n.kosul.is_some() && n.parca.is_some()).collect();
     if adaylar.is_empty() && eski_kurallar.is_empty() {
         return Ok(json!({"ozet": [
@@ -590,7 +679,7 @@ pub fn calistir(ana: &mut dyn Ana, _p: &Value) -> Result<Value, Hata> {
     let mut eklenen_parametreler = Vec::new();
     let mut tablo: Vec<String> = Vec::new();
     for is in &hazir {
-        let k = kosul(is.nokta.kosul.as_deref().unwrap_or(""), &is.nokta.id, &adlar);
+        let k = kosul_of(&is.nokta, &adlar);
         if let Kosul::Turetilmis { parametre, ifade } = &k {
             match mevcut.get(parametre) {
                 Some(e) if e.trim() == ifade => {}
@@ -620,11 +709,11 @@ pub fn calistir(ana: &mut dyn Ana, _p: &Value) -> Result<Value, Hata> {
     // part is shown again; those of slots skipped now stay as they are.
     let yeni_idler: BTreeSet<&str> = kurallar_yeni.iter().filter_map(|r| str_of(r, "id")).collect();
     let yeni_ozellikler: BTreeSet<u64> = hazir.iter().flat_map(|is| is.ozellikler.iter().copied()).collect();
-    let korunan: Vec<String> = atlanan.iter().map(|(n, _)| kural_koku(&n.id)).collect();
+    let korunan: Vec<&str> = atlanan.iter().map(|(n, _)| n.id.as_str()).collect();
     let mut silinen = Vec::new();
     let mut goster: Vec<u64> = Vec::new();
     for (id, ozellik) in &eski_kurallar {
-        if yeni_idler.contains(id.as_str()) || korunan.iter().any(|k| noktanin_kurali(id, k)) {
+        if yeni_idler.contains(id.as_str()) || korunan.iter().any(|slot| noktanin_kurallari(id, slot)) {
             continue;
         }
         ana.komut("config.rule", &json!({"id": id, "delete": true}))?;
@@ -680,7 +769,7 @@ pub fn calistir(ana: &mut dyn Ana, _p: &Value) -> Result<Value, Hata> {
     }
     let mut parcalar = Vec::new();
     for is in &hazir {
-        let k = kosul(is.nokta.kosul.as_deref().unwrap_or(""), &is.nokta.id, &adlar);
+        let k = kosul_of(&is.nokta, &adlar);
         let mut satir = format!(
             "• {}: koşul `{}`, {}",
             kisalt(&is.nokta.etiket, 60),

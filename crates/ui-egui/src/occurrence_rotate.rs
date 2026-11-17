@@ -133,6 +133,8 @@ fn free_to_turn(app: &SolveApp, mods: egui::Modifiers, other_buttons: bool) -> b
         && !crate::occurrence_drag::active(app)
         && !crate::joint_drag::active(app)
         && !crate::select_other::is_open(app)
+        // A connection point or a slot picked, or a part placed on slots: a right press is theirs.
+        && !crate::hardware_connection::any_mode(app)
 }
 
 /// One frame of the right button over the view (after navigation): a press on a part that can

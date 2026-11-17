@@ -66,6 +66,9 @@ fn save_slot(dir: &Path, slot: &mut Option<Autosaver>, session: &Session, due: b
 /// Autosave every open design on the shared cadence, or a tab after its big operation.
 pub fn tick(app: &mut SolveApp) {
     let big = std::mem::take(&mut app.big_operation);
+    // A connection point being picked holds a part brought in for a moment: the active design's
+    // recovery copy stays as it was before.
+    let picking = crate::hardware_connection::active(app);
     let Some(a) = app.autosave.as_mut() else { return };
     let due = a.last_at.elapsed() >= a.interval;
     if due {
@@ -79,7 +82,7 @@ pub fn tick(app: &mut SolveApp) {
         }
     }
     // Background writes must not replace the active design's crash-journal checkpoint.
-    if let Err(e) = save_slot(&a.dir, &mut a.active, &app.session, due || big, false) {
+    if !picking && let Err(e) = save_slot(&a.dir, &mut a.active, &app.session, due || big, false) {
         error.get_or_insert(e);
     }
     if let Some(e) = error {

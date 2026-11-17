@@ -1492,6 +1492,10 @@ impl SolveApp {
         if solidcraft_engine::panels::commands::is_command(id) {
             return self.run_panel_command(id, &params).map_err(solidcraft_engine::panels::commands::error_text);
         }
+        // A connection point or a placement slot being picked holds the design until it ends.
+        if let Some(why) = crate::hardware_connection::refusal(self, id) {
+            return Err(why);
+        }
         if self.file_load_holds() || self.file_picker.is_some() || self.saving.is_some() {
             return Err("a file operation is in progress".into());
         }

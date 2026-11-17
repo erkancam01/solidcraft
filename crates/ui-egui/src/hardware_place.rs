@@ -16,7 +16,8 @@
 //! or the end of the mode, puts the card away.
 //!
 //! The ghost is the part's display mesh, made once per file in a scratch session (as a parts
-//! dialog's picture is) and kept in the part's own coordinates, those of its STEP file, which the
+//! dialog's picture is) off the window thread, nothing drawn until it is ready, the library's
+//! Refresh making it again; it is kept in the part's own coordinates, those of its STEP file, which the
 //! preview's placement takes into the world: shaded in the accent, its creases and outline drawn
 //! over it, stronger the smaller it is on screen. A part of more than [`MAX_TRIANGLES`] triangles
 //! shows its box instead.
@@ -105,8 +106,111 @@ struct GhostEdge {
     crease: bool,
 }
 
-/// The ghosts made so far, by file; `None` for a file that would not come in.
-pub(crate) type Ghosts = HashMap<String, Option<Rc<Ghost>>>;
+/// The parts' ghosts, by file: made off the window thread (as the library's pictures are), one
+/// at a time, the first time a part's ghost is asked for, and kept; `None` for a file that would
+/// not come in, until the library's Refresh forgets them all and they are made again.
+#[derive(Default)]
+pub(crate) struct Ghosts {
+    made: HashMap<String, Option<Rc<Ghost>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    job: Option<GhostJob>,
+}
+
+/// A ghost being made: its file, where it comes, and what stops it.
+#[cfg(not(target_arch = "wasm32"))]
+struct GhostJob {
+    path: String,
+    rx: std::sync::mpsc::Receiver<Option<Ghost>>,
+    stop: std::sync::Arc<solidcraft_engine::doc::progress::Progress>,
+}
+
+/// How often the view looks for a ghost being made.
+#[cfg(not(target_arch = "wasm32"))]
+const GHOST_WAIT: std::time::Duration = std::time::Duration::from_millis(100);
+
+impl Ghosts {
+    /// The ghost of the part at `path`; `None` while it is being made (nothing is drawn) and for
+    /// a file that would not come in.
+    fn get(&mut self, path: &str, ctx: &egui::Context) -> Option<Rc<Ghost>> {
+        self.poll(ctx);
+        if let Some(made) = self.made.get(path) {
+            return made.clone();
+        }
+        self.start(path, ctx);
+        None
+    }
+
+    /// Forget every ghost (Refresh: the files may have changed); one whose file would not come in
+    /// is tried again.
+    pub(crate) fn forget(&mut self) {
+        self.stop();
+        self.made.clear();
+    }
+
+    /// Stop the ghost being made (the panel closes, or another part's is wanted).
+    pub(crate) fn stop(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(job) = self.job.take() {
+                job.stop.cancel();
+            }
+        }
+    }
+
+    /// Take a finished ghost.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn poll(&mut self, ctx: &egui::Context) {
+        use std::sync::mpsc::TryRecvError;
+        let Some(job) = &self.job else { return };
+        match job.rx.try_recv() {
+            Ok(ghost) => {
+                self.made.insert(job.path.clone(), ghost.map(Rc::new));
+                self.job = None;
+            }
+            // Stopped part way: asked for again, it is made again.
+            Err(TryRecvError::Disconnected) => self.job = None,
+            Err(TryRecvError::Empty) => ctx.request_repaint_after(GHOST_WAIT),
+        }
+    }
+
+    /// Start making the ghost of the part at `path` on a worker thread.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn start(&mut self, path: &str, ctx: &egui::Context) {
+        if self.job.as_ref().is_some_and(|job| job.path == path) {
+            return;
+        }
+        self.stop();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let stop = std::sync::Arc::new(solidcraft_engine::doc::progress::Progress::default());
+        let watching = stop.clone();
+        let file = path.to_owned();
+        let spawned = std::thread::Builder::new().name("hardware-ghost".into()).spawn(move || {
+            let ghost = solidcraft_engine::doc::progress::watch(watching.clone(), || make_ghost(&file));
+            // A ghost stopped part way is not the part's.
+            if !watching.is_cancelled() {
+                let _ = tx.send(ghost);
+            }
+        });
+        match spawned {
+            Ok(_) => {
+                self.job = Some(GhostJob { path: path.to_owned(), rx, stop });
+                ctx.request_repaint_after(GHOST_WAIT);
+            }
+            Err(_) => {
+                self.made.insert(path.to_owned(), None);
+            }
+        }
+    }
+
+    /// The web build has no threads: the ghost is made here.
+    #[cfg(target_arch = "wasm32")]
+    fn poll(&mut self, _ctx: &egui::Context) {}
+
+    #[cfg(target_arch = "wasm32")]
+    fn start(&mut self, path: &str, _ctx: &egui::Context) {
+        self.made.insert(path.to_owned(), make_ghost(path).map(Rc::new));
+    }
+}
 
 /// Whether a part is being placed.
 pub(crate) fn active(app: &SolveApp) -> bool {
@@ -186,11 +290,6 @@ fn targets(app: &SolveApp, d: &HardwareLibrary, proj: &Proj) -> Vec<(String, Pos
 /// box, nor turns the view.
 pub(crate) fn owns_pointer(app: &SolveApp, proj: &Proj, p: Pos2) -> bool {
     app.hardware_library.as_ref().is_some_and(|d| targets(app, d, proj).iter().any(|(_, at, _)| at.distance(p) <= REACH))
-}
-
-/// The ghost of the part at `path`, made the first time it is asked for.
-fn ghost(ghosts: &mut Ghosts, path: &str) -> Option<Rc<Ghost>> {
-    ghosts.entry(path.to_owned()).or_insert_with(|| make_ghost(path).map(Rc::new)).clone()
 }
 
 /// The part brought into a scratch design, its display triangles taken back through its top
@@ -379,6 +478,7 @@ pub(crate) fn show(app: &mut SolveApp, ui: &mut egui::Ui, painter: &egui::Painte
 fn placing_view(app: &mut SolveApp, d: &mut HardwareLibrary, ui: &mut egui::Ui, painter: &egui::Painter, proj: &Proj) {
     let t = Tokens::get();
     let targets = targets(app, d, proj);
+    d.ghosts.poll(ui.ctx());
     let Some(placing) = d.placing.as_mut() else { return };
     for slot in d.slots.slots.iter().filter(|s| taken(s, &placing.group)) {
         if let Some(at) = slot.frame.and_then(|f| proj.to_screen(f.origin)) {
@@ -407,7 +507,8 @@ fn placing_view(app: &mut SolveApp, d: &mut HardwareLibrary, ui: &mut egui::Ui, 
         painter.circle(*at, RADIUS * grow, t.accent.gamma_multiply(if *active { 1.0 } else { 0.6 }), Stroke::new(1.5, t.panel));
     }
     if let Some((id, at)) = &over {
-        if let Some(ghost) = ghost(&mut d.ghosts, &placing.path)
+        // Nothing until the ghost is made (off the window thread).
+        if let Some(ghost) = d.ghosts.get(&placing.path, ui.ctx())
             && let Some(m) = preview(app, placing, id)
         {
             paint_ghost(painter, proj, &ghost, &m);

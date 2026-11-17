@@ -14,12 +14,13 @@
 //! makes it.
 //!
 //! `hardware.place` puts a library part on a slot that way: it inserts the part's STEP file (or,
-//! on a slot without a condition, when an earlier placement brought that file in, places its
-//! component again), then joins the part's connection frame to the slot with that planar joint,
-//! all in one undo step, and keeps the placement in the slot list's `placed`; `hardware.unplace`
-//! takes it away again. A slot with a condition always gets a component of its own, so its part
-//! comes and goes on its own; one whose condition does not hold now takes the part hidden, its
-//! Import feature suppressed.
+//! on a slot without a condition, when an earlier placement brought that file in and nothing
+//! hides or switches that component, places its component again), then joins the part's
+//! connection frame to the slot with that planar joint, all in one undo step, and keeps the
+//! placement in the slot list's `placed`; `hardware.unplace` takes it away again. A slot with a
+//! condition always gets a component of its own, so its part comes and goes on its own; one whose
+//! condition does not hold now takes the part hidden, its Import feature suppressed. Editing a
+//! slot that holds a part moves the part's joint with it; deleting it takes the part away too.
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -135,7 +136,8 @@ pub static COMMANDS: &[CommandSpec] = &[
          the profile face the hardware sits on; world), corner: [x, y, z] (the edge's end nearest it is the corner the slot is \
          measured from), on?: [x, y, z] (a point on the floor face; default the larger planar face beside the edge), occurrence?: \
          id (default the one at edge), along?: mm or expression along the edge from the corner (default \"0\"), across?: mm, \
-         expression or \"middle\" (the middle of the floor face's width, the default), angle?: 0|90|180|270 (the part's turn about \
+         expression or \"middle\" across the floor square to the edge (middle: the middle of the floor face's width that way, \
+         the default), angle?: 0|90|180|270 (the part's turn about \
          the floor's normal; at 0 its connection x runs along the edge away from the corner), flip?: bool (the joint's flip), \
          when?: condition expression (the slot is in use while it is not 0, e.g. \"FFH > 1200 mm\"), id?: slug (default made from \
          the label), preview?: bool (work it out, change nothing) → slot, frame {origin, x, y, z} (world), active, joint_a, values, \
@@ -144,10 +146,12 @@ pub static COMMANDS: &[CommandSpec] = &[
         ),
     CommandSpec::new("hardware.slot.delete", "Delete Placement Slot", crate::checked!("hardware.slot.delete", slot_delete))
         .icon("delete")
-        .doc_only()
         .contract(&SLOT_DELETE_CONTRACT)
         .output(output_schema_for::<HardwareSlotDeleted>)
-        .params("id → id, slots (how many are left). One undo step"),
+        .params(
+            "id → id, slots (how many are left), unplaced? (the part hardware.place put there, taken away with the slot as \
+         hardware.unplace takes it: its joint, its occurrence, and its component when no other placement uses it). One undo step",
+        ),
     CommandSpec::new("hardware.slot.edit", "Edit Placement Slot", crate::checked!("hardware.slot.edit", slot_edit))
         .icon("joint_origin")
         .contract(&SLOT_EDIT_CONTRACT)
@@ -155,7 +159,8 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params(
             "id; label?, group?, along?, across?, angle?, flip?, when? (null or \"\": always in use) as hardware.slot.add takes them \
          (a key left out keeps its value); edge? and corner? (with on?, occurrence?) pick the slot's corner again; preview?: bool → \
-         slot, frame, active, joint_a, values, limits, preview. One undo step",
+         slot, frame, active, joint_a, values, limits, preview. A part hardware.place put there moves with it: its joint is made \
+         again where the slot is now, keeping the part's own flip and turn on it (a changed flip flips it). One undo step",
         ),
     CommandSpec::new("hardware.slot.list", "List Placement Slots", crate::checked!("hardware.slot.list", slot_list))
         .icon("joint_origin")
@@ -168,8 +173,9 @@ pub static COMMANDS: &[CommandSpec] = &[
          (its condition holds now), frame: {origin, x, y, z} | null (world, after along, across and angle: the origin where the \
          part's connection point goes, z out of the floor face, x the way the part's connection x runs), error? (why it can't be \
          placed now; the list still succeeds), joint_a, values, limits: what joint.create {type: \"planar\", a: joint_a, b: <the \
-         part's connection frame>, values, limits, flip} takes to put the part there (values: the shift along a's x and y, one of \
-         them along as its expression, the other across; then the turn in deg; limits hold across and the turn)}], unreadable? \
+         part's connection frame>, values, limits, flip} takes to put the part there (values: the shift along a's x and y, at a \
+         square corner one of them along as its expression, the other across, at any other (a mitred profile's) each a share of \
+         both; then the turn in deg; limits hold across and the turn)}], unreadable? \
          (entries this version can't read), placed? ({slot, path, component, occurrence, joint}: the part hardware.place put          there). Never changes the design",
         ),
     CommandSpec::new("hardware.place", "Place Hardware", crate::checked!("hardware.place", place_part))
@@ -177,7 +183,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .contract(&PLACE_CONTRACT)
         .output(output_schema_for::<HardwarePlaced>)
         .params(
-            "slot: id (with nothing on it), path: the part's .step or .stp file, whose data card gives `connection`;          preview?: bool (work out where it goes, change nothing) → slot, path, name (the card's part_no, else the file's name),          transform (the part's world placement, row-major 4x4), frame (the slot's, world), component, occurrence, joint, reused (a          further occurrence of the component an earlier hardware.place of that file brought in, on a slot without a condition;          else the file is inserted: a slot with a condition always gets a component of its own), active (the slot's condition          holds now; when it does not, the part comes in hidden, its Import feature suppressed, with a warning), preview,          warnings?. Puts the part's connection frame on the slot with a planar joint (joint.create with the slot's joint_a,          values, limits and flip; the connection z against the slot's z), so the part follows the slot's parameters; kept in the          slot list's `placed`. One undo step, all or nothing",
+            "slot: id (with nothing on it), path: the part's .step or .stp file, whose data card gives `connection`;          preview?: bool (work out where it goes, change nothing) → slot, path, name (the card's part_no, else the file's name),          transform (the part's world placement, row-major 4x4), frame (the slot's, world), component, occurrence, joint, reused (a          further occurrence of the component an earlier hardware.place of that file brought in, on a slot without a condition,          while nothing hides or switches that component (a suppressed feature, a configuration rule); else the file is inserted:          a slot with a condition always gets a component of its own), active (the slot's condition          holds now; when it does not, the part comes in hidden, its Import feature suppressed, with a warning), preview,          warnings?. Puts the part's connection frame on the slot with a planar joint (joint.create with the slot's joint_a,          values, limits and flip; the connection z against the slot's z), so the part follows the slot's parameters; kept in the          slot list's `placed`. One undo step, all or nothing",
         ),
     CommandSpec::new("hardware.unplace", "Remove Placed Hardware", crate::checked!("hardware.unplace", unplace_part))
         .icon("delete")
@@ -314,6 +320,11 @@ fn card_from(value: &Value) -> std::result::Result<HardwareCard, String> {
     Ok(card)
 }
 
+/// A card's bytes without the UTF-8 byte order mark an editor (Notepad) may start it with.
+fn without_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes)
+}
+
 /// The data card at `path`: `Ok(None)` when there is none.
 fn read_card(path: &str) -> std::result::Result<Option<HardwareCard>, String> {
     let bytes = match solidcraft_io::vfs::read(path, MAX_CARD_BYTES) {
@@ -321,7 +332,7 @@ fn read_card(path: &str) -> std::result::Result<Option<HardwareCard>, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.to_string()),
     };
-    let value: Value = serde_json::from_slice(&bytes).map_err(|e| format!("not JSON: {e}"))?;
+    let value: Value = serde_json::from_slice(without_bom(&bytes)).map_err(|e| format!("not JSON: {e}"))?;
     card_from(&value).map(Some)
 }
 
@@ -421,7 +432,7 @@ fn card_set(_s: &mut Session, p: &Value) -> Result<Value> {
     path(cmd, "data card", &card_path)?;
     // Merged with the card there, whose keys this version doesn't know are kept.
     let mut object = match solidcraft_io::vfs::read(&card_path, MAX_CARD_BYTES) {
-        Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+        Ok(bytes) => match serde_json::from_slice::<Value>(without_bom(&bytes)) {
             Ok(Value::Object(object)) => object,
             _ => return Err(bad(cmd, format!("`{card_path}` is not a JSON object: correct or remove it first"))),
         },
@@ -454,15 +465,62 @@ fn card_set(_s: &mut Session, p: &Value) -> Result<Value> {
 
 /// A slot's edge-corner frame in the world: the corner, z out of the floor face, x and y along
 /// the floor's two edges at the corner, away from it into the face (right-handed), as the joint
-/// origin gives it.
+/// origin gives it; and the two ways a slot is measured: along the picked edge from the corner,
+/// and across the floor square to it, into the face. At a square corner one of x and y runs along
+/// the picked edge and the other across it; at any other (a mitred profile's 45°) only one of
+/// them runs along an edge, which may be the other one.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Corner {
     pub origin: Vec3,
     pub x: Vec3,
     pub y: Vec3,
     pub z: Vec3,
-    /// The frame's x runs along the picked edge (else its y does).
-    pub along_x: bool,
+    /// The picked edge's way from the corner (unit, in the floor).
+    pub along: Vec3,
+    /// The floor's way square to the picked edge, into the face (unit).
+    pub across: Vec3,
+}
+
+/// A share this close to -1, 0 or 1 is that, exactly: a square corner's frame runs along and
+/// across its picked edge.
+const SQUARE: f64 = 1e-9;
+
+fn whole(v: f64) -> f64 {
+    [-1.0, 0.0, 1.0].into_iter().find(|w: &f64| (v - w).abs() < SQUARE).map_or(v, |w| w + 0.0)
+}
+
+/// How a slot's `along` and `across` go into the corner frame: shift `i` along the frame's x
+/// (`i` 0) or y (1) is `along · along[i] + across · across[i]`; the picked edge runs `turn` deg
+/// from the frame's x about its z.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Axes {
+    pub along: [f64; 2],
+    pub across: [f64; 2],
+    pub turn: f64,
+}
+
+impl Axes {
+    /// Whether the frame's x runs along the picked edge and its y across it.
+    fn along_x(&self) -> bool {
+        self.along == [1.0, 0.0] && self.across == [0.0, 1.0]
+    }
+
+    /// Whether the frame's y runs along the picked edge and its x across it.
+    fn along_y(&self) -> bool {
+        self.along == [0.0, 1.0] && self.across == [1.0, 0.0]
+    }
+}
+
+impl Corner {
+    pub(crate) fn axes(&self) -> Axes {
+        let along = [whole(self.along.dot(self.x)), whole(self.along.dot(self.y))];
+        let across = [whole(self.across.dot(self.x)), whole(self.across.dot(self.y))];
+        // A quarter turn exactly at a square corner.
+        let [c, s] = along;
+        let quarter = [([1.0, 0.0], 0.0), ([0.0, 1.0], 90.0), ([-1.0, 0.0], 180.0), ([0.0, -1.0], -90.0)];
+        let turn = quarter.iter().find(|(way, _)| *way == along).map_or_else(|| s.atan2(c).to_degrees(), |(_, turn)| *turn);
+        Axes { along, across, turn }
+    }
 }
 
 /// Where a part's connection frame goes on a slot: the planar joint's values (the shift along
@@ -477,28 +535,24 @@ pub(crate) struct Placement {
 }
 
 /// The planar joint's turn (deg, in (-180, 180]) for a slot's `angle`: at 0 the part's x runs
-/// along the picked edge, which is the corner frame's x (no turn) or its y (a quarter turn).
-pub(crate) fn turn_degrees(along_x: bool, angle: u16) -> i32 {
-    let turn = (i32::from(angle) + if along_x { 0 } else { 90 }).rem_euclid(360);
-    if turn > 180 { turn - 360 } else { turn }
+/// along the picked edge, `base` deg from the corner frame's x.
+pub(crate) fn turn_degrees(base: f64, angle: u16) -> f64 {
+    let turn = (base + f64::from(angle)).rem_euclid(360.0);
+    if turn > 180.0 { turn - 360.0 } else { turn + 0.0 }
 }
 
 /// Where a slot puts a part's connection frame: `along` the picked edge from the corner, `across`
-/// the floor (both into the face), turned `angle`. The planar joint's values are the shift along
-/// the corner frame's x and y, so `along` is the first when x runs along the edge, else the
-/// second; the frame: z out of the floor, x the corner frame's x turned by the joint's turn.
+/// the floor square to it (both into the face), turned `angle`. The planar joint's values are the
+/// shift along the corner frame's x and y (at a square corner `along` is one of them and `across`
+/// the other); the frame: z out of the floor, x the corner frame's x turned by the joint's turn.
 pub(crate) fn place(c: &Corner, along: f64, across: f64, angle: u16) -> Placement {
-    let turn = turn_degrees(c.along_x, angle);
-    let values = if c.along_x { [along, across, f64::from(turn)] } else { [across, along, f64::from(turn)] };
+    let a = c.axes();
+    let turn = turn_degrees(a.turn, angle);
+    let values = [along * a.along[0] + across * a.across[0], along * a.along[1] + across * a.across[1], turn];
     let origin = c.origin + c.x * values[0] + c.y * values[1];
     // A whole number of quarter turns, exactly.
-    let (sin, cos) = match turn {
-        0 => (0.0, 1.0),
-        90 => (1.0, 0.0),
-        180 | -180 => (0.0, -1.0),
-        -90 => (-1.0, 0.0),
-        t => f64::from(t).to_radians().sin_cos(),
-    };
+    let quarter = [(0.0, (0.0, 1.0)), (90.0, (1.0, 0.0)), (180.0, (0.0, -1.0)), (-180.0, (0.0, -1.0)), (-90.0, (-1.0, 0.0))];
+    let (sin, cos) = quarter.iter().find(|(t, _)| *t == turn).map_or_else(|| turn.to_radians().sin_cos(), |(_, sc)| *sc);
     let x = c.x * cos + c.y * sin;
     Placement { values, origin, x, y: c.z.cross(x), z: c.z }
 }
@@ -516,16 +570,67 @@ fn tidy(v: f64) -> f64 {
     (v * 1e6).round() / 1e6 + 0.0
 }
 
-/// `joint.create`'s values and limits for a planar joint onto a slot: `along` as its expression
-/// (it follows the parameters), free; `across` held, or driven by its expression; the turn held.
-pub(crate) fn joint_values(along_x: bool, along: &str, across: &Across, turn: f64) -> (Vec<Value>, Vec<Value>) {
-    let along = (json!(along), Value::Null);
-    let across = match across {
-        Across::Held(v) => (json!(tidy(*v)), json!([tidy(*v), tidy(*v)])),
-        Across::Expression(e) => (json!(e), Value::Null),
+/// A share of a slot's distance in a joint's expression: to ten decimals.
+fn share(k: f64) -> f64 {
+    (k * 1e10).round() / 1e10 + 0.0
+}
+
+/// `k · (text)` added to `sum` as expression text, with its sign: nothing for no share.
+fn add_term(sum: &mut String, k: f64, text: &str) {
+    let k = share(k);
+    if k == 0.0 {
+        return;
+    }
+    let sign = if k < 0.0 { "-" } else { "+" };
+    let factor = if k.abs() == 1.0 { String::new() } else { format!("{}*", k.abs()) };
+    if sum.is_empty() {
+        sum.push_str(if k < 0.0 { "-" } else { "" });
+    } else {
+        sum.push_str(&format!(" {sign} "));
+    }
+    sum.push_str(&format!("{factor}({text})"));
+}
+
+/// `joint.create`'s values and limits for a planar joint onto a slot whose corner `axes` are as
+/// given. At a square corner: `along` as its expression (it follows the parameters), free; `across`
+/// held, or driven by its expression; the turn held. At any other, each shift takes a share of
+/// both: an expression of them (`0.7071067812*(KOL) + 0.7071067812*(35 mm)`) that drives it while
+/// either names a parameter, else the number it comes to, held. `along_now` is `along`'s value.
+pub(crate) fn joint_values(axes: &Axes, along: &str, along_now: f64, across: &Across, turn: f64) -> (Vec<Value>, Vec<Value>) {
+    let turned = (json!(turn), json!([turn, turn]));
+    if axes.along_x() || axes.along_y() {
+        let along = (json!(along), Value::Null);
+        let across = match across {
+            Across::Held(v) => (json!(tidy(*v)), json!([tidy(*v), tidy(*v)])),
+            Across::Expression(e) => (json!(e), Value::Null),
+        };
+        let (first, second) = if axes.along_x() { (along, across) } else { (across, along) };
+        return (vec![first.0, second.0, turned.0], vec![first.1, second.1, turned.1]);
+    }
+    let fixed = solidcraft_doc::expr::references(along).is_empty();
+    let shift = |i: usize| -> (Value, Value) {
+        let (ka, kb) = (axes.along.get(i).copied().unwrap_or(0.0), axes.across.get(i).copied().unwrap_or(0.0));
+        match across {
+            Across::Held(v) if fixed => {
+                let v = tidy(along_now * ka + v * kb);
+                (json!(v), json!([v, v]))
+            }
+            _ => {
+                let mut sum = String::new();
+                add_term(&mut sum, ka, along);
+                match across {
+                    Across::Held(v) => add_term(&mut sum, kb, &format!("{} mm", tidy(*v))),
+                    Across::Expression(e) => add_term(&mut sum, kb, e),
+                }
+                if sum.is_empty() {
+                    sum.push('0');
+                }
+                (json!(sum), Value::Null)
+            }
+        }
     };
-    let (first, second) = if along_x { (along, across) } else { (across, along) };
-    (vec![first.0, second.0, json!(turn)], vec![first.1, second.1, json!([turn, turn])])
+    let (first, second) = (shift(0), shift(1));
+    (vec![first.0, second.0, turned.0], vec![first.1, second.1, turned.1])
 }
 
 /// A slot's corner frame and the geometry around it now, in the world.
@@ -599,24 +704,27 @@ fn around(s: &Session, origin: &JointOrigin) -> std::result::Result<Around, Stri
     let unit = |v: Vec3| v.normalized().ok_or("the slot's frame is degenerate");
     let (origin_w, x, y, z) = (column(&world, 3), unit(column(&world, 0))?, unit(column(&world, 1))?, unit(column(&world, 2))?);
     let edge_end = apply_point(&to_world, far);
-    let de = unit(edge_end - origin_w)?;
-    let along_x = x.dot(de).abs() >= y.dot(de).abs();
-    let across = if along_x { y } else { x };
+    // Along the picked edge in the floor, and square to it across the floor: the side the face
+    // lies on from the edge (the corner frame's axes run along the corner's two edges, so at a
+    // corner that is not square neither may run across).
+    let de = unit((edge_end - origin_w) - z * (edge_end - origin_w).dot(z))?;
+    let square = z.cross(de);
     let mut span: Option<(f64, f64)> = None;
     for e in solidcraft_kernel::face_edge_indices(&body.body, face_index) {
         let Ok(path) = solidcraft_kernel::edge_path(&body.body, e) else { continue };
         for p in samples(&path) {
-            let d = (apply_point(&to_world, apply_point(&offset, p)) - origin_w).dot(across);
+            let d = (apply_point(&to_world, apply_point(&offset, p)) - origin_w).dot(square);
             span = Some(span.map_or((d, d), |(lo, hi)| (lo.min(d), hi.max(d))));
         }
     }
     let span = span.ok_or("the slot's floor face has no edges")?;
+    let (across, span) = if span.0 + span.1 < 0.0 { (-square, (-span.1, -span.0)) } else { (square, span) };
     let middle = origin_w + de * (edge_end.dist(origin_w) / 2.0) + across * ((span.0 + span.1) / 2.0);
     let floor_point = solidcraft_doc::naming::face_spot(body, face_index)
         .map(|spot| apply_point(&to_world, apply_point(&offset, spot.point)))
         .filter(|p| p.is_finite())
         .unwrap_or(middle);
-    Ok(Around { corner: Corner { origin: origin_w, x, y, z, along_x }, edge_end, floor_point, span })
+    Ok(Around { corner: Corner { origin: origin_w, x, y, z, along: de, across }, edge_end, floor_point, span })
 }
 
 /// `v` as JSON coordinates, to a nanometre, no `-0`.
@@ -670,7 +778,7 @@ fn work_out(s: &Session, slot: &HardwareSlot) -> std::result::Result<Worked, Str
         Across::Expression(_) => length(s, &slot.across).map_err(|e| format!("across: {e}"))?,
     };
     let p = place(&around.corner, along, across_now, slot.angle);
-    let (values, limits) = joint_values(around.corner.along_x, slot.along.trim(), &across, p.values[2]);
+    let (values, limits) = joint_values(&around.corner.axes(), slot.along.trim(), along, &across, p.values[2]);
     let c = around.corner.origin;
     let mut joint_a = json!({
         "occurrence": slot.origin.occurrence,
@@ -915,6 +1023,7 @@ fn slot_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let index = slots.iter().position(|v| raw_id(v) == Some(r.id.as_str())).ok_or_else(|| bad(cmd, format!("no placement slot `{}`", r.id)))?;
     let kept = slots.get(index).cloned().unwrap_or_default();
     let mut slot: HardwareSlot = serde_json::from_value(kept).map_err(|e| bad(cmd, format!("the placement slot `{}` can't be read: {e}", r.id)))?;
+    let before = slot.clone();
     if let Some(label) = &r.label {
         slot.label = slot_text(cmd, "label", label, true)?;
     }
@@ -947,6 +1056,21 @@ fn slot_edit(s: &mut Session, p: &Value) -> Result<Value> {
         if let Some(entry) = slots.get_mut(index) {
             *entry = value;
         }
+        let mut store = store;
+        // The part on it moves with it, in the same undo step: its joint made again there.
+        if let Some(entry) = placements(&store).into_iter().find(|e| e.slot == set.slot.id && live(s, e))
+            && let Some(joint) = rejoin(s, &entry, &before, &set, cmd)?
+        {
+            let mut placed = raw_placed(&store, cmd)?;
+            for v in &mut placed {
+                if serde_json::from_value::<HardwarePlacement>(v.clone()).ok().is_some_and(|e| e == entry)
+                    && let Some(v) = v.as_object_mut()
+                {
+                    v.insert("joint".into(), json!(joint));
+                }
+            }
+            store.insert("placed".into(), Value::Array(placed));
+        }
         save_slots(s, store, slots, cmd)?;
     }
     reply(cmd, set)
@@ -955,13 +1079,28 @@ fn slot_edit(s: &mut Session, p: &Value) -> Result<Value> {
 fn slot_delete(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "hardware.slot.delete";
     let r: HardwareSlotDeleteParams = serde_json::from_value(p.clone()).map_err(|e| bad(cmd, e.to_string()))?;
-    let store = store(s, cmd)?;
+    let mut store = store(s, cmd)?;
     let mut slots = raw_slots(&store);
     let index = slots.iter().position(|v| raw_id(v) == Some(r.id.as_str())).ok_or_else(|| bad(cmd, format!("no placement slot `{}`", r.id)))?;
     slots.remove(index);
     let left = slots.len();
+    // The part on it goes with it, in the same undo step, and so does its entry in `placed`.
+    let on_slot: Vec<HardwarePlacement> = placements(&store).into_iter().filter(|e| e.slot == r.id).collect();
+    let mut unplaced = None;
+    if !on_slot.is_empty() {
+        let mut placed = raw_placed(&store, cmd)?;
+        for entry in on_slot {
+            let there = live(s, &entry);
+            take_away(s, &entry)?;
+            if there {
+                unplaced = Some(entry);
+            }
+        }
+        placed.retain(|v| serde_json::from_value::<HardwarePlacement>(v.clone()).ok().is_none_or(|e| e.slot != r.id));
+        store.insert("placed".into(), Value::Array(placed));
+    }
     save_slots(s, store, slots, cmd)?;
-    reply(cmd, HardwareSlotDeleted { id: r.id, slots: left, param_warnings: Vec::new() })
+    reply(cmd, HardwareSlotDeleted { id: r.id, slots: left, unplaced, param_warnings: Vec::new() })
 }
 
 fn slot_list(s: &mut Session, p: &Value) -> Result<Value> {
@@ -1046,6 +1185,15 @@ fn live(s: &Session, e: &HardwarePlacement) -> bool {
     s.doc.occurrences.iter().any(|o| o.id == e.occurrence && o.component == e.component)
 }
 
+/// Whether a component comes and goes on its own: one of its features (its Import feature) is
+/// suppressed now, or a configuration rule switches one. Another occurrence of it would come and
+/// go with it.
+fn switched(s: &Session, component: u64) -> bool {
+    let own: BTreeSet<u64> = s.doc.features.iter().filter(|f| f.component == component).map(|f| f.id).collect();
+    s.doc.features.iter().any(|f| own.contains(&f.id) && f.suppressed)
+        || s.doc.configs.rules.iter().any(|r| matches!(&r.effect, solidcraft_doc::config::RuleEffect::DriveSuppression { feature, .. } if own.contains(feature)))
+}
+
 /// Whether two part paths name the same file (any case on Windows).
 fn same_file(a: &str, b: &str) -> bool {
     let (a, b) = (native(a), native(b));
@@ -1125,7 +1273,9 @@ fn place_part(s: &mut Session, p: &Value) -> Result<Value> {
     let reuse = if slot.when.is_some() {
         None
     } else {
-        taken.iter().find(|e| same_file(&e.path, &part_path) && live(s, e) && !own(e.component)).map(|e| e.component)
+        // Never one that comes and goes on its own (hidden, or switched by a rule): the new part
+        // would come and go with it.
+        taken.iter().find(|e| same_file(&e.path, &part_path) && live(s, e) && !own(e.component) && !switched(s, e.component)).map(|e| e.component)
     };
     let mut out = HardwarePlaced {
         slot: slot.id.clone(),
@@ -1213,19 +1363,50 @@ fn unplace_part(s: &mut Session, p: &Value) -> Result<Value> {
         .or_else(|| placed.iter().position(|v| on_slot(v).is_some()))
         .ok_or_else(|| bad(cmd, format!("nothing is placed on slot `{}`", r.slot)))?;
     let entry = placed.get(index).and_then(on_slot).ok_or_else(|| bad(cmd, format!("nothing is placed on slot `{}`", r.slot)))?;
-    if s.doc.assembly.joints.iter().any(|j| j.id == entry.joint) {
-        nested(s, "joint.delete", &json!({ "joint": entry.joint }))?;
-    }
-    let mut component_removed = false;
-    if live(s, &entry) {
-        // The last occurrence takes its component (and the Import feature) with it.
-        let last = s.doc.occurrences.iter().filter(|o| o.component == entry.component).count() == 1;
-        nested(s, "selection.delete", &json!({ "occurrences": [entry.occurrence] }))?;
-        component_removed = last && !s.doc.components.iter().any(|c| c.id == entry.component);
-    }
+    let component_removed = take_away(s, &entry)?;
     placed.remove(index);
     save_placed(s, store, placed, cmd)?;
     reply(cmd, HardwareUnplaced { slot: entry.slot, occurrence: entry.occurrence, joint: entry.joint, component_removed, param_warnings: Vec::new() })
+}
+
+/// Take a placed part away: its joint, its occurrence, and its component when no other
+/// occurrence uses it (the last occurrence takes its component and Import feature with it).
+/// Whether the component went.
+fn take_away(s: &mut Session, entry: &HardwarePlacement) -> Result<bool> {
+    if s.doc.assembly.joints.iter().any(|j| j.id == entry.joint) {
+        nested(s, "joint.delete", &json!({ "joint": entry.joint }))?;
+    }
+    if !live(s, entry) {
+        return Ok(false);
+    }
+    let last = s.doc.occurrences.iter().filter(|o| o.component == entry.component).count() == 1;
+    nested(s, "selection.delete", &json!({ "occurrences": [entry.occurrence] }))?;
+    Ok(last && !s.doc.components.iter().any(|c| c.id == entry.component))
+}
+
+/// Make the joint that holds a slot's part again where the slot comes to now (`set`, the slot
+/// as edited; `before`, as it was): the part's side stays its connection frame, and the flip and
+/// turn given to it on the slot stay (a flip of the slot itself flips it). The new joint; `None`
+/// when the part has no joint (deleted by hand).
+fn rejoin(s: &mut Session, entry: &HardwarePlacement, before: &HardwareSlot, set: &HardwareSlotSet, cmd: &str) -> Result<Option<u64>> {
+    let Some(j) = s.doc.assembly.joints.iter().find(|j| j.id == entry.joint).cloned() else { return Ok(None) };
+    let m = {
+        let st = s.model.state();
+        s.doc.origin_world(&st, &j.b).map_err(|e| bad(cmd, format!("the part on slot `{}` can't follow it: {e}", set.slot.id)))?
+    };
+    let b = json!({"occurrence": j.b.occurrence, "frame": {"origin": [m[3][0], m[3][1], m[3][2]], "z": [m[2][0], m[2][1], m[2][2]], "x": [m[0][0], m[0][1], m[0][2]]}});
+    let flip = j.flip != (before.flip != set.slot.flip);
+    let angle = j.exprs.angle.clone().map_or_else(|| json!(tidy(j.angle.to_degrees())), |e| json!(e));
+    let offset = j.exprs.offset.clone().map_or_else(|| json!(tidy(j.offset)), |e| json!(e));
+    let name = j.name.strip_prefix(&format!("{}: ", before.label)).map_or_else(|| j.name.clone(), |part| format!("{}: {part}", set.slot.label));
+    nested(s, "joint.delete", &json!({ "joint": j.id }))?;
+    let made = nested(
+        s,
+        "joint.create",
+        &json!({"type": "planar", "name": name, "a": set.joint_a, "b": b, "values": set.values, "limits": set.limits, "flip": flip,
+            "offset": offset, "angle": angle, "quiet": true}),
+    )?;
+    made["joint"].as_u64().map(Some).ok_or_else(|| bad(cmd, "the joint made has no id"))
 }
 
 #[cfg(test)]

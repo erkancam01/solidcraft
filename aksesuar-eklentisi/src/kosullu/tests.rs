@@ -412,7 +412,7 @@ fn conditional_parts_get_rules_and_a_shared_one_its_own_copy() {
     assert_eq!(ids, ["kosul-kilit-orta-on", "kosul-kilit-orta-off", "kosul-kilit-ust-on", "kosul-kilit-ust-off"]);
     assert_eq!(
         rules[0],
-        json!({"id": "kosul-kilit-orta-on", "name": "Kilit orta: FFH > 1200 mm iken var", "enabled": true,
+        json!({"id": "kosul-kilit-orta-on", "name": "Koşullu parça: Kilit orta: FFH > 1200 mm iken var", "enabled": true,
             "condition": {"type": "parameter", "parameter": "FFH", "operator": "gt", "expression": "1200 mm"},
             "effect": {"type": "drive_suppression", "feature": 103, "value": false}})
     );
@@ -571,7 +571,7 @@ fn conditions_map_to_rules() {
     }
     // SolidCraft's limits: a parameter name and a rule id at most 64 characters.
     let uzun = "a-".repeat(40);
-    assert_eq!(kosul_parametresi(&uzun).len(), 64);
+    assert!(kosul_parametresi(&uzun).len() <= 64);
     assert!(kosul_parametresi(&uzun).starts_with("KOSUL_A_A_"));
     let n = Nokta {
         id: uzun.clone(),
@@ -593,6 +593,83 @@ fn conditions_map_to_rules() {
     }
     assert!(noktanin_kurali("kosul-a-on", "kosul-a") && noktanin_kurali("kosul-a-off-2", "kosul-a"));
     assert!(!noktanin_kurali("kosul-a-b-on", "kosul-a") && !noktanin_kurali("kosul-a-on-", "kosul-a") && !noktanin_kurali("kosul-ab-on", "kosul-a"));
+}
+
+/// Long slot ids alike at the start get rule ids and condition parameters of their own (a short
+/// stable digest of the whole id after a readable start); ids that fit keep the names they had.
+#[test]
+fn long_slot_ids_alike_at_the_start_never_share_rules_or_parameters() {
+    let ortak = "kanat-sag-alt-kose-ek-kilit-ispanyolet-tij-baglanti-";
+    let (a, b) = (format!("{ortak}birinci"), format!("{ortak}ikinci"));
+    assert!(ortak.len() > 50);
+    assert_ne!(kural_koku(&a), kural_koku(&b));
+    assert_ne!(kosul_parametresi(&a), kosul_parametresi(&b));
+    assert!(kural_koku(&a).starts_with(&format!("kosul-{}-", &a[..40])) && kural_koku(&a).ends_with(&ozet(&a)), "{}", kural_koku(&a));
+    assert_eq!(kosul_parametresi(&a), format!("KOSUL_{}_{}", a[..40].to_ascii_uppercase().replace('-', "_"), ozet(&a).to_ascii_uppercase()));
+    assert_eq!(ozet(&a), ozet(&a.clone()), "stable");
+    assert_eq!(ozet(&a).len(), 8);
+    let n = |id: &str| Nokta {
+        id: id.into(),
+        etiket: "E".into(),
+        kosul: Some("FFH > 1 mm".into()),
+        aktif: true,
+        hata: None,
+        eklem_a: None,
+        degerler: None,
+        sinirlar: None,
+        cevir: false,
+        parca: None,
+    };
+    let k = Kosul::Turetilmis { parametre: "KOSUL_X".into(), ifade: "1".into() };
+    for sira in [0, 1, 11] {
+        for r in kurallar(&n(&a), &k, 7, sira) {
+            let id = r["id"].as_str().unwrap();
+            assert!(id.len() <= 64 && noktanin_kurallari(id, &a) && !noktanin_kurallari(id, &b), "{r}");
+        }
+    }
+    // 0.1.4 cut such an id to its first 50: those rules are still the slot's (to be replaced).
+    let eski = format!("kosul-{}-on", &a[..50]);
+    assert!(noktanin_kurallari(&eski, &a));
+    // Ids that fit keep their names, so a design made with 0.1.4 stays as it is.
+    assert_eq!(kural_koku("kilit-orta"), "kosul-kilit-orta");
+    assert_eq!(kosul_parametresi("ek-kilit-1"), "KOSUL_EK_KILIT_1");
+    assert_eq!(kural_koku(&"a".repeat(50)), format!("kosul-{}", "a".repeat(50)));
+    // Two ids that would share a parameter (`-` and `_` both become `_`): the later one gets its own.
+    let adlar = parametre_adlari(["a-b", "a_b", "c"]);
+    assert_eq!(adlar["a-b"], "KOSUL_A_B");
+    assert_eq!(adlar["c"], "KOSUL_C");
+    assert!(adlar["a_b"].starts_with("KOSUL_A_B_") && adlar["a_b"] != adlar["a-b"], "{adlar:?}");
+}
+
+/// Only this entry's rules are changed or removed: a rule of the user's own whose id starts with
+/// `kosul-` stays as it is; a rule an earlier version made (no `Koşullu parça:` name, the id it
+/// makes for a slot of the design) is still this entry's, replaced or removed as its slot is now.
+#[test]
+fn only_this_entrys_rules_are_changed_or_removed() {
+    let t = Rc::new(RefCell::new(Tasarim::yeni()));
+    let rule = |id: &str, name: &str, feature: u64| {
+        json!({"id": id, "name": name, "enabled": true,
+            "condition": {"type": "parameter", "parameter": "FFH", "operator": "gt", "expression": "1 mm"},
+            "effect": {"type": "drive_suppression", "feature": feature, "value": false}})
+    };
+    let user = rule("kosul-benim", "Benim kuralım", 21);
+    let named_like_ours = json!({"id": "benim-2", "name": "Koşullu parça: el ile", "enabled": true,
+        "condition": {"type": "always"}, "effect": {"type": "drive_suppression", "feature": 21, "value": false}});
+    let legacy_now = rule("kosul-kilit-ust-on", "Kilit üst: eski ad iken var", 52);
+    let legacy_gone = rule("kosul-sol-alt-kose-off", "Sol alt köşe: CK değilken yok", 36);
+    t.borrow_mut().rules.extend([user.clone(), named_like_ours.clone(), legacy_now, legacy_gone]);
+    let mut a = ana(&t);
+    let out = calistir(&mut a, &json!({})).unwrap();
+    let deletes: Vec<Value> = a.komutlar.iter().filter(|(c, p)| c == "config.rule" && p.get("delete").is_some()).map(|(_, p)| p["id"].clone()).collect();
+    assert_eq!(deletes, [json!("kosul-sol-alt-kose-off")], "the old rule of a slot that is no longer conditional goes; the user's stay");
+    assert_eq!(out["silinen_kurallar"], json!(["kosul-sol-alt-kose-off"]));
+    let d = t.borrow();
+    assert!(d.rules.contains(&user) && d.rules.contains(&named_like_ours), "{:?}", d.rules);
+    let ust: Vec<&Value> = d.rules.iter().filter(|r| r["id"] == "kosul-kilit-ust-on").collect();
+    assert_eq!(ust.len(), 1);
+    assert_eq!(ust[0]["name"], "Koşullu parça: Kilit üst: and(FFH > 1400 mm, FFB > 800 mm) iken var", "replaced by id");
+    assert!(bizim_kural(ust[0], &[]), "this entry's by its name alone");
+    assert!(!bizim_kural(&user, &noktalar(&json!({"slots": d.slots}))) && !bizim_kural(&named_like_ours, &[]));
 }
 
 #[test]

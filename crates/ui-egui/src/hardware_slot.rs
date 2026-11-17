@@ -6,8 +6,10 @@
 //! it, whose end nearest the click is the corner the slot is measured from. A small card asks for
 //! the name, the group, how far along the edge and across the floor, the turn, the flip and an
 //! optional condition, and shows where the slot comes to (`hardware.slot.add`/`edit` with
-//! `preview`) as a triad in the view. Save adds or changes the slot in one undo step; Cancel and
-//! Esc change nothing.
+//! `preview`) as a triad in the view. Save adds or changes the slot in one undo step (a part on
+//! it moves with it); Cancel and Esc change nothing. While a slot is picked, commands that would
+//! change the design wait (`hardware_connection::refusal`). Delete on a slot that holds a part
+//! asks first, under its row: the part goes with it.
 //!
 //! While the library is open every slot is drawn in the view as a dot (the theme's accent, dimmed
 //! while its condition does not hold), its name shown on hover; the slot being edited or picked
@@ -104,10 +106,25 @@ fn slot_of(v: &Value) -> Option<Slot> {
     })
 }
 
-/// List the design's slots again when it changed since they were listed.
+/// Whether the design is mid-gesture: a sketch drag whose later features wait (the model is
+/// stale), or a part, a joint or a sketch text being dragged or turned. Listing the slots then
+/// would build the whole model every frame; they are listed once it settles.
+fn moving(app: &SolveApp) -> bool {
+    app.session.model.is_stale()
+        || app.viewport.point_drag.is_some()
+        || crate::occurrence_drag::active(app)
+        || crate::joint_drag::active(app)
+        || crate::joint_handles::active(app)
+        || crate::occurrence_rotate::active(app)
+        || crate::sketch_text_handles::dragging(app)
+        || crate::dialogs_move::dragging(app)
+}
+
+/// List the design's slots again when it changed since they were listed, once it is not
+/// mid-gesture (the last listing stays up meanwhile).
 pub(crate) fn refresh(app: &mut SolveApp, listed: &mut Listed) {
     let key = |app: &SolveApp| (app.session.uid, app.session.revision, std::sync::Arc::as_ptr(&app.session.doc) as usize);
-    if listed.key == Some(key(app)) {
+    if listed.key == Some(key(app)) || moving(app) {
         return;
     }
     match app.session.execute("hardware.slot.list", &json!({})) {
@@ -440,7 +457,7 @@ fn save(app: &mut SolveApp) -> Result<(), String> {
 }
 
 /// Cancel: nothing changes.
-fn cancel(app: &mut SolveApp) {
+pub(crate) fn cancel(app: &mut SolveApp) {
     if let Some(pick) = app.hardware_slot.take() {
         finish(app, &pick);
     }
@@ -545,12 +562,17 @@ pub(crate) enum SlotAction {
     Add,
     Edit(String),
     Delete(String),
+    /// Delete a slot that holds a part, with its part: the question's answer.
+    ConfirmDelete(String),
+    /// Keep the slot the question was about.
+    KeepSlot,
     Select(String),
 }
 
 /// The library panel's Placement slots section: the slots by group, each with its edit and delete
 /// buttons, and Add slot…. `busy` (a slot or a connection point being picked) waits them all.
-pub(crate) fn section(ui: &mut egui::Ui, listed: &Listed, busy: bool) -> Option<SlotAction> {
+/// `asking`: the slot holding a part whose Delete asks first, the question under its row.
+pub(crate) fn section(ui: &mut egui::Ui, listed: &Listed, busy: bool, asking: Option<&str>) -> Option<SlotAction> {
     let t = Tokens::get();
     let mut action = None;
     crate::ui_kit::section_count_as_written(ui, "hardware-library-slots", tr("hardware_slot.title"), true, Some(listed.slots.len()), |ui| {
@@ -571,6 +593,11 @@ pub(crate) fn section(ui: &mut egui::Ui, listed: &Listed, busy: bool) -> Option<
             ui.label(RichText::new(title).small().strong().color(t.text_dim));
             for slot in listed.slots.iter().filter(|s| s.group == group) {
                 if let Some(a) = slot_row(ui, slot, listed.selected.as_deref() == Some(slot.id.as_str()), busy) {
+                    action = Some(a);
+                }
+                if asking == Some(slot.id.as_str())
+                    && let Some(a) = delete_question(ui, slot, busy)
+                {
                     action = Some(a);
                 }
             }
@@ -619,6 +646,27 @@ fn slot_row(ui: &mut egui::Ui, slot: &Slot, selected: bool, busy: bool) -> Optio
     if slot.error.is_none() && !slot.active {
         ui.label(RichText::new(tr("hardware_slot.inactive")).small().color(t.text_dim));
     }
+    action
+}
+
+/// Under a slot that holds a part, after its Delete: whether to delete it with its part, and
+/// Delete and Cancel.
+fn delete_question(ui: &mut egui::Ui, slot: &Slot, busy: bool) -> Option<SlotAction> {
+    let t = Tokens::get();
+    let mut action = None;
+    ui.label(RichText::new(tr("hardware_slot.delete_placed")).small().color(t.warning));
+    ui.horizontal(|ui| {
+        let delete = crate::ui_kit::button(ui, tr("ui.delete"), crate::ui_kit::Button::Enabled(!busy));
+        crate::panel_runtime::register_content_focus(ui.ctx(), &delete);
+        if delete.clicked() && !busy {
+            action = Some(SlotAction::ConfirmDelete(slot.id.clone()));
+        }
+        let keep = crate::ui_kit::button(ui, tr("ui.cancel"), crate::ui_kit::Button::Normal);
+        crate::panel_runtime::register_content_focus(ui.ctx(), &keep);
+        if keep.clicked() {
+            action = Some(SlotAction::KeepSlot);
+        }
+    });
     action
 }
 
@@ -802,5 +850,11 @@ mod tests {
         assert!(!active(&app));
         assert_eq!(app.session.undo.len(), undo);
         assert!(std::sync::Arc::ptr_eq(&app.session.doc, &doc) || *app.session.doc == *doc);
+        // While a slot is picked the design waits; a save, a close or a switch ends it first.
+        start(&mut app, None, Vec::new(), None).unwrap();
+        assert_eq!(app.run("solid.box", json!({"length": 5, "width": 5, "height": 5})).unwrap_err(), tr("hardware_slot.mode_busy"));
+        assert_eq!(app.session.undo.len(), undo);
+        crate::hardware_connection::end_modes(&mut app);
+        assert!(!active(&app));
     }
 }

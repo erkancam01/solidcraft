@@ -28,6 +28,9 @@ impl Saving {
 /// taken up by [`tick`] (true: it is under way); in the browser, or when no thread can start, it
 /// runs here and is finished on return (false).
 pub fn start(app: &mut SolveApp, command: &'static str, params: Value) -> bool {
+    // A connection point or a placement slot being picked is put away first: the file never
+    // holds the part brought in for the picks.
+    crate::hardware_connection::end_modes(app);
     // An assembly reading its links for a part edited in place takes them up when the read is
     // done: a save before then would record a design that is about to change as saved.
     if let Some(name) = crate::edit_in_place::refreshing_assembly(app) {

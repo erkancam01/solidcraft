@@ -55,6 +55,8 @@ pub struct HardwareLibrary {
     pub(crate) slots: crate::hardware_slot::Listed,
     /// The group the last slot saved went in: a new slot starts there.
     pub(crate) last_group: Option<String>,
+    /// A slot holding a part whose Delete asks first (its id): the part goes with it.
+    pub(crate) confirm_delete: Option<String>,
     /// The part being placed on slots (`hardware_place`).
     pub(crate) placing: Option<crate::hardware_place::Placing>,
     /// The parts' ghosts made for placing them, by file.
@@ -64,6 +66,7 @@ pub struct HardwareLibrary {
 impl Drop for HardwareLibrary {
     fn drop(&mut self) {
         self.pictures.stop();
+        self.ghosts.stop();
     }
 }
 
@@ -181,12 +184,19 @@ fn slot_action(app: &mut SolveApp, d: &mut HardwareLibrary, action: crate::hardw
                 d.error = crate::hardware_slot::start(app, Some(&slot), groups(d), None).err();
             }
         }
-        SlotAction::Delete(id) => {
+        // A slot holding a part asks first: the part goes with it (`hardware.slot.delete`).
+        SlotAction::Delete(id) if d.slots.slots.iter().any(|s| s.id == id && s.placed.is_some()) => {
+            d.confirm_delete = Some(id);
+            d.error = None;
+        }
+        SlotAction::Delete(id) | SlotAction::ConfirmDelete(id) => {
+            d.confirm_delete = None;
             d.error = app.run("hardware.slot.delete", json!({ "id": id })).err();
             if d.error.is_none() {
                 app.set_status(tr("hardware_slot.deleted"), false);
             }
         }
+        SlotAction::KeepSlot => d.confirm_delete = None,
         SlotAction::Select(id) => {
             d.slots.selected = if d.slots.selected.as_deref() == Some(id.as_str()) { None } else { Some(id) };
             d.error = None;
@@ -313,7 +323,11 @@ fn body(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
                 }
             };
             ui.separator();
-            let slot = crate::hardware_slot::section(ui, &d.slots, busy);
+            // The question goes once its slot holds no part (taken away meanwhile, or undone).
+            if d.confirm_delete.as_ref().is_some_and(|id| !d.slots.slots.iter().any(|s| s.id == *id && s.placed.is_some())) {
+                d.confirm_delete = None;
+            }
+            let slot = crate::hardware_slot::section(ui, &d.slots, busy, d.confirm_delete.as_deref());
             (row, slot)
         });
     let after = scroll.inner_rect.bottom();
@@ -394,6 +408,7 @@ fn folder_row(app: &mut SolveApp, ui: &mut egui::Ui, d: &mut HardwareLibrary) {
         if refresh.clicked() {
             d.listing = None;
             d.pictures.forget();
+            d.ghosts.forget();
         }
     });
 }

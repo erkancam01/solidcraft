@@ -160,7 +160,7 @@ pub fn calistir(ana: &mut dyn Ana, p: &Value) -> Result<Value, Hata> {
         if onceki == Some(n.aktif) {
             continue;
         }
-        let kuralli = n.parca.is_some() && kurallar.iter().any(|(r, _)| kosullu::noktanin_kurali(r, &kosullu::kural_koku(id)));
+        let kuralli = n.parca.is_some() && kurallar.iter().any(|(r, _)| kosullu::noktanin_kurallari(r, id));
         let mut satir = format!("• {}: {} → {}", kisalt(&n.etiket, 60), onceki.map_or("?", kullanim), kullanim(n.aktif));
         if n.parca.is_some() {
             if kuralli {

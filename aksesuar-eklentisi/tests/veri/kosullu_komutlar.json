@@ -178,7 +178,7 @@
           },
           "enabled": true,
           "id": "kosul-kilit-orta-on",
-          "name": "Kilit orta: FFH > 1200 mm iken var"
+          "name": "Koşullu parça: Kilit orta: FFH > 1200 mm iken var"
         },
         {
           "condition": {
@@ -194,7 +194,7 @@
           },
           "enabled": true,
           "id": "kosul-kilit-orta-off",
-          "name": "Kilit orta: FFH > 1200 mm değilken yok"
+          "name": "Koşullu parça: Kilit orta: FFH > 1200 mm değilken yok"
         },
         {
           "condition": {
@@ -210,7 +210,7 @@
           },
           "enabled": true,
           "id": "kosul-kilit-ust-on",
-          "name": "Kilit üst: and(FFH > 1400 mm, FFB > 800 mm) iken var"
+          "name": "Koşullu parça: Kilit üst: and(FFH > 1400 mm, FFB > 800 mm) iken var"
         },
         {
           "condition": {
@@ -226,7 +226,7 @@
           },
           "enabled": true,
           "id": "kosul-kilit-ust-off",
-          "name": "Kilit üst: and(FFH > 1400 mm, FFB > 800 mm) değilken yok"
+          "name": "Koşullu parça: Kilit üst: and(FFH > 1400 mm, FFB > 800 mm) değilken yok"
         }
       ]
     }

@@ -532,6 +532,8 @@ pub fn switch(app: &mut SolveApp, i: usize) {
     if i == app.docs.active || i >= app.docs.slots.len() {
         return;
     }
+    // A connection point or a slot being picked ends here, before the design goes behind.
+    crate::hardware_connection::end_modes(app);
     let Some(incoming) = app.docs.slots.get_mut(i).and_then(Option::take) else {
         return;
     };
@@ -1132,6 +1134,11 @@ pub fn close(app: &mut SolveApp, i: usize, force: bool) {
     if i >= n {
         return;
     }
+    // A connection point or a slot being picked ends first: the "save changes?" question and its
+    // save see the design without the part brought in for the picks.
+    if i == app.docs.active {
+        crate::hardware_connection::end_modes(app);
+    }
     if !force && dirty(app, i) {
         app.docs.closing = Some(i);
         return;
@@ -1261,6 +1268,7 @@ pub fn request_quit(app: &mut SolveApp) {
     if app.file_picker_busy() {
         return;
     }
+    crate::hardware_connection::end_modes(app);
     if app.docs.quitting.is_none() {
         // Quit replaces a pending tab-close group with this window's complete set. The
         // legacy preference keeps an existing individual question before moving on.

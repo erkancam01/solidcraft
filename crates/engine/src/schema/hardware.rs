@@ -344,6 +344,10 @@ pub struct HardwareSlotDeleted {
     pub id: String,
     /// How many slots are left.
     pub slots: usize,
+    /// The part `hardware.place` put there, taken away with the slot (its joint, its occurrence,
+    /// and its component when no other placement uses it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unplaced: Option<HardwarePlacement>,
     /// In the warn parameter-check mode: what the call's parameters got wrong.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub param_warnings: Vec<String>,
@@ -368,8 +372,9 @@ pub struct HardwareSlotListed {
     /// `joint.create`'s side `a` for a planar joint that puts a part on the slot: the edge-corner
     /// origin as world points (`occurrence`, `edge`, `corner`, `on`).
     pub joint_a: Option<serde_json::Value>,
-    /// The planar joint's values: the shift along a's x and y (one of them `along`, kept as an
-    /// expression, the other `across`) and the turn (deg).
+    /// The planar joint's values: the shift along a's x and y (at a square corner one of them
+    /// `along`, kept as an expression, the other `across`; at any other each takes a share of
+    /// both, an expression while either names a parameter) and the turn (deg).
     pub values: Option<Vec<serde_json::Value>>,
     /// The planar joint's limits: `across` (unless an expression) and the turn held.
     pub limits: Option<Vec<serde_json::Value>>,

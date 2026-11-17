@@ -4,7 +4,9 @@
 //! sash's hardware groove) and a reference edge in that face. Save writes the frame to the part's
 //! data card (`hardware.card.set`) in the part's own coordinates, those of its STEP file, then
 //! the design goes back to the checkpoint: the part is gone again and no undo step is left.
-//! Cancel, Esc and closing the card go back to it too.
+//! Cancel, Esc and closing the card go back to it too. Meanwhile commands that would change the
+//! design or write it out wait ([`refusal`]); a save, closing the design or switching to another
+//! puts the mode away first, as Cancel does ([`end_modes`]), so no file holds the part.
 //!
 //! The frame: `z` is the seat face's normal out of the material, the origin the reference edge's
 //! end nearest the click on it (or, with From the middle of the edge, its middle), `x` along the
@@ -273,6 +275,70 @@ pub(crate) fn active(app: &SolveApp) -> bool {
     app.hardware_connection.is_some()
 }
 
+/// Whether one of the hardware library's picking modes is on: a connection point or a placement
+/// slot being picked, or a part being placed on slots. The view's own gestures wait meanwhile: no
+/// quick mate card, no part dragged or turned.
+pub(crate) fn any_mode(app: &SolveApp) -> bool {
+    active(app) || crate::hardware_slot::active(app) || crate::hardware_place::active(app)
+}
+
+/// Commands that make no undo step of their own but must not run while a connection point or a
+/// slot is picked: they move through the history, open or start another design or an edit, or
+/// write the design out (with the part brought in for the picks).
+const HELD_BACK: [&str; 16] = [
+    "component.activate",
+    "component.edit_in_place",
+    "component.finish_edit",
+    "doc.open",
+    "doc.recover",
+    "edit.checkpoint",
+    "edit.redo",
+    "edit.repeat",
+    "edit.restore_checkpoint",
+    "edit.undo",
+    "file.new",
+    "file.save_mesh",
+    "file.send_to_slicer",
+    "library.apply",
+    "sketch.edit",
+    "timeline.play",
+];
+
+/// Saving the design while a connection point or a slot is picked: the mode is put away first
+/// ([`end_modes`]), so the file never holds the part brought in for the picks.
+const SAVES: [&str; 2] = ["file.save", "file.save_as"];
+
+/// Why command `id` may not run now, from the command line, a button or a shortcut: a connection
+/// point or a placement slot is being picked, and the design goes back to its checkpoint (or the
+/// card works out from it) when that ends, so nothing may change it meanwhile; exporting would
+/// write the part brought in for the picks. A save puts the mode away first and goes ahead.
+/// Selection, view and read commands, and the modes' own, run.
+pub(crate) fn refusal(app: &mut SolveApp, id: &str) -> Option<String> {
+    if !active(app) && !crate::hardware_slot::active(app) {
+        return None;
+    }
+    if SAVES.contains(&id) {
+        end_modes(app);
+        return None;
+    }
+    let undoable = solidcraft_engine::find_command(id).is_some_and(|spec| spec.undoable);
+    let own = matches!(id, "hardware.card.set" | "hardware.slot.list" | "hardware.library.list");
+    if (undoable || HELD_BACK.contains(&id) || id.starts_with("file.export")) && !own {
+        let why = tr("hardware_slot.mode_busy").to_owned();
+        app.set_status(why.clone(), true);
+        return Some(why);
+    }
+    None
+}
+
+/// Put a connection point or a slot being picked away, as Cancel does: the design goes back to
+/// its checkpoint (the part brought in for the picks is gone again) and no slot is changed. Before
+/// a save, a close or a switch to another design.
+pub(crate) fn end_modes(app: &mut SolveApp) {
+    cancel(app);
+    crate::hardware_slot::cancel(app);
+}
+
 /// Where the import's top occurrence sits in the world now; `None` once it is gone (undone).
 fn placement(s: &Session, occurrence: u64) -> Option<Mat> {
     let doc = s.placed_document();
@@ -442,7 +508,11 @@ fn finish(app: &mut SolveApp, pick: Pick) {
     if app.dialog.is_some() {
         crate::dialogs::cancel(app);
     }
-    if let Err(e) = app.run("edit.restore_checkpoint", json!({"checkpoint": pick.checkpoint})) {
+    // Straight to the session when the app can't run it now (a file operation under way): the
+    // part brought in for the picks must not stay.
+    if let Err(e) = app.run("edit.restore_checkpoint", json!({"checkpoint": pick.checkpoint}))
+        && app.session.execute("edit.restore_checkpoint", &json!({"checkpoint": pick.checkpoint})).is_err()
+    {
         app.set_status(e, true);
     }
     app.session.selection.clear();
@@ -728,6 +798,31 @@ mod tests {
         assert!(app.ui.pick_components, "the pick filter is put back");
         assert_eq!(app.session.undo.len(), undo, "no undo step is left");
         assert!(std::sync::Arc::ptr_eq(&app.session.doc, &doc) || *app.session.doc == *doc, "the part is gone again");
+    }
+
+    #[test]
+    fn while_picking_the_design_waits_and_a_save_puts_the_part_away_first() {
+        let part = Part::new();
+        let mut app = crate::SolveApp::new(Session::default(), crate::Services::default());
+        start(&mut app, &part.step(), "Corner").unwrap();
+        let busy = tr("hardware_slot.mode_busy");
+        let export = part.0.join("out.step");
+        for (id, p) in [
+            ("solid.box", json!({"length": 5, "width": 5, "height": 5})),
+            ("edit.undo", json!({})),
+            ("file.export_step", json!({"path": export.to_string_lossy()})),
+        ] {
+            assert_eq!(app.run(id, p).unwrap_err(), busy, "{id}");
+        }
+        assert!(active(&app) && app.session.doc.occurrences.len() == 1 && !export.exists(), "the part is still in for the picks");
+        assert!(app.run("select.clear", json!({})).is_ok(), "selection commands run");
+        // A save puts the mode away first, as Cancel does: the file never holds the part.
+        let saved = part.0.join("saved.sc");
+        app.run("file.save_as", json!({"path": saved.to_string_lossy()})).unwrap();
+        assert!(!active(&app) && app.session.doc.occurrences.is_empty());
+        let mut opened = Session::default();
+        opened.execute("doc.open", &json!({"path": saved.to_string_lossy()})).unwrap();
+        assert!(opened.doc.occurrences.is_empty(), "saved without the part");
     }
 
     #[test]

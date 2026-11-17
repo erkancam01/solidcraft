@@ -27,7 +27,9 @@
     "hardware_slot.not_flat": "Pick a flat face of the profile",
     "hardware_slot.not_in_face": "Pick a straight edge of the floor face",
     "hardware_slot.saved": "Placement slot saved",
-    "hardware_slot.busy": "Save or cancel the placement slot first"
+    "hardware_slot.busy": "Save or cancel the placement slot first",
+    "hardware_slot.mode_busy": "Finish the connection point or placement slot first (Save or Cancel)",
+    "hardware_slot.delete_placed": "A part sits on this slot; delete the slot with its part?"
   },
   "tr": {
     "cmd.hardware.slot.add": "Yerleşim Noktası Ekle",
@@ -57,7 +59,9 @@
     "hardware_slot.not_flat": "Profilin düz bir yüzünü seçin",
     "hardware_slot.not_in_face": "Taban yüzünün düz bir kenarını seçin",
     "hardware_slot.saved": "Yerleşim noktası kaydedildi",
-    "hardware_slot.busy": "Önce yerleşim noktasını kaydedin ya da iptal edin"
+    "hardware_slot.busy": "Önce yerleşim noktasını kaydedin ya da iptal edin",
+    "hardware_slot.mode_busy": "Önce bağlantı noktası/nokta modunu bitirin (Kaydet ya da İptal)",
+    "hardware_slot.delete_placed": "Bu noktada parça var; parçayla birlikte silinsin mi?"
   },
   "de": {
     "cmd.hardware.slot.add": "Einbauposition hinzufügen",
@@ -87,7 +91,9 @@
     "hardware_slot.not_flat": "Eine ebene Fläche des Profils wählen",
     "hardware_slot.not_in_face": "Eine gerade Kante der Grundfläche wählen",
     "hardware_slot.saved": "Einbauposition gespeichert",
-    "hardware_slot.busy": "Zuerst die Einbauposition speichern oder abbrechen"
+    "hardware_slot.busy": "Zuerst die Einbauposition speichern oder abbrechen",
+    "hardware_slot.mode_busy": "Schließen Sie zuerst den Anschlusspunkt oder die Einbauposition ab (Speichern oder Abbrechen)",
+    "hardware_slot.delete_placed": "Auf dieser Einbauposition sitzt ein Teil; mit dem Teil löschen?"
   },
   "ko": {
     "cmd.hardware.slot.add": "배치 위치 추가",
@@ -117,7 +123,9 @@
     "hardware_slot.not_flat": "프로파일의 평평한 면을 선택하세요",
     "hardware_slot.not_in_face": "바닥 면의 직선 모서리를 선택하세요",
     "hardware_slot.saved": "배치 위치를 저장했습니다",
-    "hardware_slot.busy": "먼저 배치 위치를 저장하거나 취소하세요"
+    "hardware_slot.busy": "먼저 배치 위치를 저장하거나 취소하세요",
+    "hardware_slot.mode_busy": "먼저 연결점 또는 배치 위치 작업을 마치세요(저장 또는 취소)",
+    "hardware_slot.delete_placed": "이 배치 위치에 부품이 있습니다. 부품과 함께 삭제할까요?"
   },
   "ar": {
     "cmd.hardware.slot.add": "إضافة موضع تركيب",
@@ -147,7 +155,9 @@
     "hardware_slot.not_flat": "اختر وجهًا مستويًا من المقطع",
     "hardware_slot.not_in_face": "اختر حافة مستقيمة من الوجه القاعدي",
     "hardware_slot.saved": "حُفظ موضع التركيب",
-    "hardware_slot.busy": "احفظ موضع التركيب أو ألغِه أولًا"
+    "hardware_slot.busy": "احفظ موضع التركيب أو ألغِه أولًا",
+    "hardware_slot.mode_busy": "أنهِ نقطة الوصل أو موضع التركيب أولًا (حفظ أو إلغاء)",
+    "hardware_slot.delete_placed": "توجد قطعة في هذا الموضع؛ هل يُحذف مع القطعة؟"
   },
   "he": {
     "cmd.hardware.slot.add": "הוספת מקום התקנה",
@@ -177,7 +187,9 @@
     "hardware_slot.not_flat": "בחרו פאה שטוחה של הפרופיל",
     "hardware_slot.not_in_face": "בחרו קצה ישר של פאת הבסיס",
     "hardware_slot.saved": "מקום ההתקנה נשמר",
-    "hardware_slot.busy": "שמרו או בטלו קודם את מקום ההתקנה"
+    "hardware_slot.busy": "שמרו או בטלו קודם את מקום ההתקנה",
+    "hardware_slot.mode_busy": "סיימו קודם את נקודת החיבור או את מיקום ההצבה (שמירה או ביטול)",
+    "hardware_slot.delete_placed": "במיקום זה יש חלק; למחוק אותו יחד עם החלק?"
   },
   "ja": {
     "cmd.hardware.slot.add": "取付位置を追加",
@@ -207,7 +219,9 @@
     "hardware_slot.not_flat": "プロファイルの平らな面を選択してください",
     "hardware_slot.not_in_face": "取付面の直線エッジを選択してください",
     "hardware_slot.saved": "取付位置を保存しました",
-    "hardware_slot.busy": "先に取付位置を保存するかキャンセルしてください"
+    "hardware_slot.busy": "先に取付位置を保存するかキャンセルしてください",
+    "hardware_slot.mode_busy": "先に接続点または配置位置の操作を終えてください(保存またはキャンセル)",
+    "hardware_slot.delete_placed": "この配置位置には部品があります。部品ごと削除しますか?"
   },
   "vi": {
     "cmd.hardware.slot.add": "Thêm vị trí lắp",
@@ -237,7 +251,9 @@
     "hardware_slot.not_flat": "Chọn một mặt phẳng của profile",
     "hardware_slot.not_in_face": "Chọn một cạnh thẳng của mặt đáy",
     "hardware_slot.saved": "Đã lưu vị trí lắp",
-    "hardware_slot.busy": "Hãy lưu hoặc hủy vị trí lắp trước"
+    "hardware_slot.busy": "Hãy lưu hoặc hủy vị trí lắp trước",
+    "hardware_slot.mode_busy": "Hãy hoàn tất điểm nối hoặc vị trí lắp trước (Lưu hoặc Hủy)",
+    "hardware_slot.delete_placed": "Vị trí lắp này có chi tiết; xóa cùng với chi tiết?"
   },
   "zh": {
     "cmd.hardware.slot.add": "添加安装位置",
@@ -267,6 +283,8 @@
     "hardware_slot.not_flat": "选择型材的一个平面",
     "hardware_slot.not_in_face": "选择底面的一条直边",
     "hardware_slot.saved": "已保存安装位置",
-    "hardware_slot.busy": "请先保存或取消安装位置"
+    "hardware_slot.busy": "请先保存或取消安装位置",
+    "hardware_slot.mode_busy": "请先完成连接点或安装位置(保存或取消)",
+    "hardware_slot.delete_placed": "此安装位置上有零件;连同零件一起删除吗?"
   }
 }
